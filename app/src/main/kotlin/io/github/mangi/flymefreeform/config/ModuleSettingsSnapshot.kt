@@ -20,6 +20,8 @@ internal data class ModuleSettingsSnapshot(
     val pinnedComponents: List<ComponentName> = emptyList(),
     val innerPinsSaved: Boolean = false,
     val innerPinnedComponents: List<ComponentName> = emptyList(),
+    /** @author bomo 外圈固定应用未满时，用最近使用的应用补齐（排除已固定项）。 */
+    val fillOuterWithRecent: Boolean = ModulePreferences.DEFAULT_FILL_OUTER_WITH_RECENT,
     val outsideTapCloseMode: OutsideTapCloseMode =
         ModulePreferences.DEFAULT_OUTSIDE_TAP_CLOSE_MODE,
     val handleSwipeUpToMiniEnabled: Boolean =
@@ -64,6 +66,10 @@ internal data class ModuleSettingsSnapshot(
             .putBoolean(
                 ModulePreferences.KEY_HANDLE_SWIPE_UP_TO_MINI_ENABLED,
                 handleSwipeUpToMiniEnabled,
+            )
+            .putBoolean(
+                ModulePreferences.KEY_FILL_OUTER_WITH_RECENT,
+                fillOuterWithRecent,
             )
         if (pinsSaved) {
             editor.putString(
@@ -148,6 +154,11 @@ internal data class ModuleSettingsSnapshot(
                     ModulePreferences.KEY_HANDLE_SWIPE_UP_TO_MINI_ENABLED,
                     ModulePreferences.DEFAULT_HANDLE_SWIPE_UP_TO_MINI_ENABLED,
                 )
+            val fillOuterWithRecent =
+                preferences.getBoolean(
+                    ModulePreferences.KEY_FILL_OUTER_WITH_RECENT,
+                    ModulePreferences.DEFAULT_FILL_OUTER_WITH_RECENT,
+                )
             val pinsSaved = preferences.contains(ModulePreferences.KEY_CORNER_PINS)
             val innerPinsSaved = preferences.contains(ModulePreferences.KEY_CORNER_INNER_PINS)
             val pins =
@@ -180,6 +191,7 @@ internal data class ModuleSettingsSnapshot(
                 pinnedComponents = pins,
                 outsideTapCloseMode = outsideTapCloseMode,
                 handleSwipeUpToMiniEnabled = handleSwipeUpToMiniEnabled,
+                fillOuterWithRecent = fillOuterWithRecent,
                 pauseInLandscape = preferences.getBoolean(
                     ModulePreferences.KEY_PAUSE_IN_LANDSCAPE,
                     ModulePreferences.DEFAULT_PAUSE_IN_LANDSCAPE,

@@ -39,7 +39,8 @@ internal data class AppCatalogSnapshot(
         this.settings.pinsSaved == settings.pinsSaved &&
             this.settings.pinnedComponents == settings.pinnedComponents &&
             this.settings.innerPinsSaved == settings.innerPinsSaved &&
-            this.settings.innerPinnedComponents == settings.innerPinnedComponents
+            this.settings.innerPinnedComponents == settings.innerPinnedComponents &&
+            this.settings.fillOuterWithRecent == settings.fillOuterWithRecent
 }
 
 /** 目录查询只在后台执行；发布后的 Bitmap 与列表供手势热路径只读。 */
@@ -69,7 +70,8 @@ internal class ColorOsAppCatalog(
                     cached.settings.pinsSaved == settings.pinsSaved &&
                     cached.settings.pinnedComponents == settings.pinnedComponents &&
                     cached.settings.innerPinsSaved == settings.innerPinsSaved &&
-                    cached.settings.innerPinnedComponents == settings.innerPinnedComponents
+                    cached.settings.innerPinnedComponents == settings.innerPinnedComponents &&
+                    cached.settings.fillOuterWithRecent == settings.fillOuterWithRecent
                 ) {
                     cached
                 } else {
@@ -122,12 +124,28 @@ internal class ColorOsAppCatalog(
             }
         val byPackage = entries.groupBy { entry -> entry.component.packageName }
         val tools = ToolCatalogCodec.decode(toolCatalog()).associateBy(ToolCatalogCodec.Record::alias)
-        val radial =
-            if (settings.pinsSaved || settings.innerPinsSaved) {
-                // 双圈：外圈在前、内圈在后，两个圈的固定顺序各自保留。
-                resolvePins(settings.pinnedComponents, byComponent, byPackage, tools) +
-                    resolvePins(settings.innerPinnedComponents, byComponent, byPackage, tools)
-            } else {
+        val radial: List<RadialAppEntry>
+        val radialOuterCount: Int
+        if (settings.pinsSaved || settings.innerPinsSaved) {
+            // 双圈：外圈在前、内圈在后，两个圈的固定顺序各自保留；
+            // @author bomo 开关开启且外圈固定项不足 6 个时，用最近使用补齐外圈空缺
+            // （补齐项排除已固定的外圈 / 内圈应用），见 AppSelectionPolicy.pinnedRadialItems。
+            val outerPins = resolvePins(settings.pinnedComponents, byComponent, byPackage, tools)
+            val innerPins = resolvePins(settings.innerPinnedComponents, byComponent, byPackage, tools)
+            AppSelectionPolicy.pinnedRadialItems(
+                outerPins = outerPins,
+                innerPins = innerPins,
+                recent = recents,
+                all = alphabetical,
+                identity = RadialAppEntry::component,
+                outerLimit = io.github.mangi.flymefreeform.config.ModulePreferences.OUTER_PINNED_APPS,
+                fillOuterWithRecent = settings.fillOuterWithRecent,
+            ).also { (list, outerCount) ->
+                radial = list
+                radialOuterCount = outerCount
+            }
+        } else {
+            val fallback =
                 AppSelectionPolicy.radialItems(
                     pinsSaved = false,
                     availablePins = emptyList(),
@@ -136,7 +154,9 @@ internal class ColorOsAppCatalog(
                     identity = RadialAppEntry::component,
                     limit = io.github.mangi.flymefreeform.config.ModulePreferences.MAX_PINNED_APPS,
                 )
-            }
+            radial = fallback
+            radialOuterCount = fallback.size
+        }
         val excluded = radial.mapTo(HashSet(), RadialAppEntry::component)
         val panel =
             AppSelectionPolicy.panelItems(
@@ -159,11 +179,7 @@ internal class ColorOsAppCatalog(
             revision,
             settings,
             radial,
-            radialOuterCount = if (settings.pinsSaved || settings.innerPinsSaved) {
-                resolvePins(settings.pinnedComponents, byComponent, byPackage, tools).size
-            } else {
-                radial.size
-            },
+            radialOuterCount = radialOuterCount,
             panel,
             sources,
         )

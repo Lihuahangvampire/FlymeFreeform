@@ -116,6 +116,10 @@ internal class FrameworkConnectionRepository(
     fun setHandleSwipeUpToMiniEnabled(enabled: Boolean) =
         updateSettings { it.copy(handleSwipeUpToMiniEnabled = enabled) }
 
+    /** @author bomo 外圈固定应用未满（少于 6 个）时，用最近使用的应用补齐（排除已固定项）。 */
+    fun setFillOuterWithRecent(enabled: Boolean) =
+        updateSettings { it.copy(fillOuterWithRecent = enabled) }
+
     fun setPauseInLandscape(enabled: Boolean) =
         updateSettings { it.copy(pauseInLandscape = enabled) }
 

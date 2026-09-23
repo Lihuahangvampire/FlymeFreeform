@@ -42,6 +42,8 @@ internal fun FlymeFreeformNavHost(
     onPanelScaleChange: (Int) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
+    /** @author bomo 外圈固定应用未满时用最近使用补齐（开关）。 */
+    onFillOuterWithRecentChange: (Boolean) -> Unit,
     onPauseInLandscapeChange: (Boolean) -> Unit,
     onPauseInGameModeChange: (Boolean) -> Unit,
     onRequestScopes: () -> Unit,
@@ -85,6 +87,7 @@ internal fun FlymeFreeformNavHost(
                         onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
                         onHandleSwipeUpToMiniEnabledChange =
                             onHandleSwipeUpToMiniEnabledChange,
+                        onFillOuterWithRecentChange = onFillOuterWithRecentChange,
                         onPauseInLandscapeChange = onPauseInLandscapeChange,
                         onPauseInGameModeChange = onPauseInGameModeChange,
                         onRequestScopes = onRequestScopes,

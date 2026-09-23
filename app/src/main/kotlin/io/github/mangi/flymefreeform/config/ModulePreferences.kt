@@ -31,6 +31,13 @@ internal object ModulePreferences {
     const val KEY_CORNER_INNER_PINS = "corner_inner_pins_v1"
 
     /**
+     * @author bomo 外圈固定应用未满（少于 [OUTER_PINNED_APPS]）时，用最近使用的应用补齐
+     * （排除已固定的外圈 / 内圈应用）。默认关闭，保持「固定几个就显示几个」的既有行为。
+     */
+    const val KEY_FILL_OUTER_WITH_RECENT = "fill_outer_with_recent_v1"
+    const val DEFAULT_FILL_OUTER_WITH_RECENT = false
+
+    /**
      * 侧边栏工具目录（侧边栏进程写入，App 与 system_server 读取）。
      * 工具（小布识屏 / 屏幕翻译 / 截屏等）不是独立应用，无法用 LauncherApps 枚举，
      * 只能由侧边栏进程从原厂 ToolEntryHelper 导出。

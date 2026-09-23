@@ -54,6 +54,8 @@
     <string name="radial_apps_recent_summary">首次使用时自动显示最近使用的六个应用</string>
     <string name="radial_apps_empty_summary">未固定应用，扇形中只显示“更多”</string>
     <string name="radial_apps_count_summary">已固定 %1$d 个应用</string>
+    <string name="fill_outer_with_recent_title">外圈未满时补齐最近使用</string>
+    <string name="fill_outer_with_recent_summary">外圈固定应用少于 6 个时，用最近使用的应用补齐空缺；不会覆盖已固定的应用</string>
 
     <string name="outside_tap_close_title">点击小窗外关闭</string>
     <string name="outside_tap_close_summary">选择不执行、单击关闭或双击关闭；三种模式互斥</string>

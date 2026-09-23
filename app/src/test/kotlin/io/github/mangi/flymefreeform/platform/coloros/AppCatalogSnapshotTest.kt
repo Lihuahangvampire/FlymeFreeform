@@ -20,4 +20,12 @@ class AppCatalogSnapshotTest {
         val completed = AppCatalogSnapshot(settings = requested)
         assertTrue(completed.matches(requested.copy(cornerTriggerRangeDp = 100, enabled = true)))
     }
+
+    /** @author bomo 外圈补齐开关变化会使已就绪的目录失效（需按新策略重建）。 */
+    @Test
+    fun fillOuterWithRecentSwitchInvalidatesPreparedCatalog() {
+        val requested = ModuleSettingsSnapshot()
+        val completed = AppCatalogSnapshot(settings = requested)
+        assertFalse(completed.matches(requested.copy(fillOuterWithRecent = true)))
+    }
 }

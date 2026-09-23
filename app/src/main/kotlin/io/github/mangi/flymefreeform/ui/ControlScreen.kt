@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.ElectricalServices
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.ScreenRotation
@@ -102,6 +103,8 @@ internal fun ControlScreen(
     onPanelScaleChange: (Int) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
+    /** @author bomo 外圈固定应用未满时用最近使用补齐（开关）。 */
+    onFillOuterWithRecentChange: (Boolean) -> Unit,
     onPauseInLandscapeChange: (Boolean) -> Unit,
     onPauseInGameModeChange: (Boolean) -> Unit,
     onRequestScopes: () -> Unit,
@@ -190,6 +193,12 @@ internal fun ControlScreen(
                                 onHandleSwipeUpToMiniEnabledChange,
                         )
                     }
+                    item(key = "radial_apps_policy") {
+                        RadialAppsPolicyCard(
+                            state = state,
+                            onFillOuterWithRecentChange = onFillOuterWithRecentChange,
+                        )
+                    }
                     item(key = "environment") {
                         EnvironmentCard(state, onPauseInLandscapeChange, onPauseInGameModeChange)
                     }
@@ -232,6 +241,27 @@ private fun EnvironmentCard(
             summary = stringResource(R.string.pause_in_game_mode_summary),
             enabled = state.canChangeSettings,
             startAction = { PreferenceIcon(Icons.Rounded.SportsEsports, state.canChangeSettings) },
+        )
+    }
+}
+
+/**
+ * @author bomo 扇形应用策略：外圈固定应用未满（少于 6 个）时，用最近使用的应用补齐空缺。
+ * 开关写入远端配置，侧边栏进程下次构建目录即生效，无需重启。
+ */
+@Composable
+private fun RadialAppsPolicyCard(
+    state: FrameworkConnectionState,
+    onFillOuterWithRecentChange: (Boolean) -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        SwitchPreference(
+            checked = state.settings.fillOuterWithRecent,
+            onCheckedChange = onFillOuterWithRecentChange,
+            title = stringResource(R.string.fill_outer_with_recent_title),
+            summary = stringResource(R.string.fill_outer_with_recent_summary),
+            enabled = state.canChangeSettings,
+            startAction = { PreferenceIcon(Icons.Rounded.History, state.canChangeSettings) },
         )
     }
 }

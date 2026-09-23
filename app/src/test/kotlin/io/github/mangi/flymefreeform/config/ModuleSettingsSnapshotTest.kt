@@ -123,6 +123,21 @@ class ModuleSettingsSnapshotTest {
         assertEquals(160, restored.cornerTriggerRangeDp)
     }
 
+    /** @author bomo 外圈最近使用补齐开关：默认关闭，可独立写入并回读。 */
+    @Test
+    fun fillOuterWithRecentDefaultsOffAndRoundTrips() {
+        assertFalse(ModuleSettingsSnapshot().fillOuterWithRecent)
+
+        val preferences = InMemoryPreferences()
+        ModuleSettingsSnapshot(fillOuterWithRecent = true).writeTo(preferences.edit()).commit()
+
+        assertEquals(
+            true,
+            preferences.getBoolean(ModulePreferences.KEY_FILL_OUTER_WITH_RECENT, false),
+        )
+        assertTrue(ModuleSettingsSnapshot.readFrom(preferences).fillOuterWithRecent)
+    }
+
     /** @author bomo 面板缩放：读入越界脏值应钳到合法区间（滑条与远端配置都可能写入越界值）。 */
     @Test
     fun panelScaleIsClampedWhenRead() {
