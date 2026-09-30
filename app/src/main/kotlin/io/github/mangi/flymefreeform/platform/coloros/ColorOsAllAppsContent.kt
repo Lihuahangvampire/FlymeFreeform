@@ -105,14 +105,39 @@ internal class ColorOsAllAppsContent(
         } else {
             null
         }
-    private val glassApply = glassHelperClass?.getMethod(
-        "r",
-        View::class.java,
-        Boolean::class.javaPrimitiveType,
-        Boolean::class.javaPrimitiveType,
-    )
-    private val glassRelease = glassHelperClass?.getMethod("H")
-    private val glassAlpha = glassHelperClass?.getMethod("S", Float::class.javaPrimitiveType)
+    /**
+     * @author bomo 「附着平台玻璃」入口。该方法族会随侧边栏小版本漂移：
+     *  - 17.9.2：`r(View, boolean, boolean)`；
+     *  - 17.9.8 起：`r` 尾部新增一个 Int 参数，签名变为 `r(View, boolean, boolean, int)`。
+     * 反汇编其 Kotlin `$default` 合成方法（混淆名 `s`）确认三个参数默认值为
+     * `asBackground = true, withMaterial = true, extra = 0`，
+     * 故新签名的等价调用是 `invoke(helper, view, true, true, 0)`（见 [attachPlatformGlass]）。
+     *
+     * 两种签名都尝试，且全程 runCatching 兜底：找不到就返回 null，
+     * 由 [attachPlatformGlass] 回退窗口模糊 —— 绝不再让构造期的反射异常拖垮整个「全部」面板。
+     * （0.2.3 及以前正是死在裸 `getMethod("r", View, Z, Z)` 抛出的 NoSuchMethodException，
+     * 表现为 `ALL_APPS_SESSION_FAILED`，面板每次打开即失败。）
+     */
+    private val glassApply: Method? = runCatching {
+        glassHelperClass?.getMethod(
+            "r",
+            View::class.java,
+            Boolean::class.javaPrimitiveType,
+            Boolean::class.javaPrimitiveType,
+        )
+    }.getOrNull() ?: runCatching {
+        glassHelperClass?.getMethod(
+            "r",
+            View::class.java,
+            Boolean::class.javaPrimitiveType,
+            Boolean::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType,
+        )
+    }.getOrNull()
+    private val glassRelease: Method? = runCatching { glassHelperClass?.getMethod("H") }.getOrNull()
+    private val glassAlpha: Method? = runCatching {
+        glassHelperClass?.getMethod("S", Float::class.javaPrimitiveType)
+    }.getOrNull()
     private var glassHelper: Any? = null
     private var glassTried = false
 
@@ -384,9 +409,17 @@ internal class ColorOsAllAppsContent(
         runCatching {
             val helper = type.getConstructor().newInstance()
             // r(view, asBackground=true, withMaterial=true)：与原生面板一致的附着方式。
-            if (apply.invoke(helper, surface, true, true) == true) {
+            // 17.9.8+ 的 r 尾插一个 Int 参数（默认 0，见 glassApply 注释），按实参个数适配；
+            // 显式传 0 与原生 `$default` 取到的默认值等价。
+            val applied = if (apply.parameterCount >= 4) {
+                apply.invoke(helper, surface, true, true, 0)
+            } else {
+                apply.invoke(helper, surface, true, true)
+            }
+            if (applied == true) {
                 glassHelper = helper
                 platformGlass = true
+                log(Log.INFO, "PLATFORM_GLASS_ATTACHED", null)
                 // 模糊 Drawable 即视图背景，卡片底色必须透明，否则挡住玻璃。
                 cardClass.getMethod("setCardBackgroundColor", Int::class.javaPrimitiveType).call(surface, 0)
                 surface.elevation = 0f

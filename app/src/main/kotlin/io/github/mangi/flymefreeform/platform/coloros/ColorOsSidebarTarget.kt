@@ -9,9 +9,13 @@ import android.os.Build
 /**
  * 仅启用已核对的系统包；包名相同或方法名相似不足以证明兼容。
  *
- * @author bomo 版本判断分级化：精确版本（16.14.6 / 17.9.2）作为快速通道；
- * 未精确命中但 SDK 不低于 [MIN_VERIFIED_SDK] 时仍放行，改由结构校验
- * （服务、Provider、权限、进程名、system flag）与运行期诊断码兜底。
+ * @author bomo 版本判断分级化：
+ *  - 快速通道：精确版本（16.14.6）直接放行；
+ *  - 宽容通道：侧边栏版本号 ≥ 17.9.2（见 [VERSION_CODE_17_9_2]）一律放行，不绑定 SDK，
+ *    覆盖 17.9.2 及其后所有升级；
+ *  - 兜底：其余未精确命中时，只要 SDK 不低于 [MIN_VERIFIED_SDK] 仍放行。
+ * 放行后的兼容性交由结构校验（服务、Provider、权限、进程名、system flag）
+ * 与运行期诊断码兜底，失败即安全降级。
  * 这样侧边栏小版本更新不会让功能整体失效，而真正的不兼容仍会安全降级。
  */
 internal object ColorOsSidebarTarget {
@@ -31,18 +35,29 @@ internal object ColorOsSidebarTarget {
      */
     const val MIN_VERIFIED_SDK = 36
 
+    /**
+     * @author bomo 智能侧边栏 17.9.2 的 longVersionCode，作为"宽容放行"的版本下限。
+     * 侧边栏版本号编码规则：major × 10^7 + minor × 10^3 + patch，
+     * 故 17.9.2 → 17×10^7 + 9×10^3 + 2 = 170009002。
+     * 凡 sideBarVersionCode ≥ 此值的侧边栏一律视为适配（覆盖 17.9.2 及其后所有升级）。
+     */
+    const val VERSION_CODE_17_9_2 = 170009002L
+
     fun supportedUid(context: Context): Int? {
         val manager = context.packageManager
         return try {
             val info = manager.getPackageInfo(PACKAGE_NAME, PackageManager.PackageInfoFlags.of(0))
             // @author bomo：分级版本判断。智能侧边栏更新频率高，精确版本号一旦漂移，
             // 旧实现会直接放弃（返回 null）导致「全部」面板整体不可用。
-            // 这里保留"已核对版本"的精确匹配作为快速通道；未精确匹配时不直接放弃，
-            // 只要 SDK 不低于已验证基线就继续向下走 —— 后文的结构校验（服务/Provider/
-            // 权限/进程名/system flag）与运行期诊断码会兜底，失败即安全降级，不崩溃。
+            // 快速通道：已核对版本的精确匹配（16.14.6）。
+            // 宽容通道：侧边栏版本号 ≥ 17.9.2 一律放行（不再要求精确相等、也不再绑定 SDK），
+            // 覆盖 17.9.2 及其后所有升级（17.9.3 / 17.10 / 18.x …）；仅当版本低于
+            // [VERSION_CODE_17_9_2] 且 SDK 低于 [MIN_VERIFIED_SDK] 时才放弃。
+            // 后续结构校验（服务/Provider/权限/进程名/system flag）与运行期诊断码兜底，
+            // 失败即安全降级，不崩溃。
             val verified = when {
                 Build.VERSION.SDK_INT == 36 && info.longVersionCode == 160014006L && info.versionName == "16.14.6" -> true
-                Build.VERSION.SDK_INT == 37 && info.longVersionCode == 170009002L && info.versionName == "17.9.2" -> true
+                info.longVersionCode >= VERSION_CODE_17_9_2 -> true
                 else -> false
             }
             if (!verified && Build.VERSION.SDK_INT < MIN_VERIFIED_SDK) return null
