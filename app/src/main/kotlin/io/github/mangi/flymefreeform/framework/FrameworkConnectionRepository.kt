@@ -1,11 +1,15 @@
 package io.github.mangi.flymefreeform.framework
 
 import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.util.Log
 import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
+import io.github.mangi.flymefreeform.config.ConfigSnapshotCodec
 import io.github.mangi.flymefreeform.config.ModulePreferences
+import io.github.mangi.flymefreeform.config.SharedStateProtocol
 import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
 import io.github.mangi.flymefreeform.config.OutsideTapCloseMode
 import io.github.mangi.flymefreeform.config.PinnedComponentCodec
@@ -18,7 +22,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /** Service 102 的进程级所有者；所有同步 Binder 调用都串行限制在单一后台线程。 */
-internal class FrameworkConnectionRepository {
+internal class FrameworkConnectionRepository(
+    /** @author bomo 仅用于把配置变更推给 Hook 进程（见 [pushConfigToHooks]）。 */
+    private val context: Context,
+) {
     private val started = AtomicBoolean(false)
     private val worker = Executors.newSingleThreadExecutor { task -> Thread(task, WORKER_THREAD_NAME) }
     private val liveServices = IdentityHashMap<XposedService, Unit>()
@@ -277,9 +284,34 @@ internal class FrameworkConnectionRepository {
                 val confirmed = previous.copy(settings = next, isUpdating = false, issue = null)
                 activeConnection = connection.copy(confirmedState = confirmed)
                 mutableState.value = confirmed
+                // @author bomo 落盘成功后立刻推给 Hook 进程：那边读远端偏好是**进程内缓存**，
+                // 不推这一把，用户改完设置必须重启手机才生效（详见 pushConfigToHooks 注释）。
+                pushConfigToHooks(next)
             } else {
                 isolateFailedConnection(connection, previous)
             }
+        }
+    }
+
+    /**
+     * @author bomo 把最新配置推给 Hook 进程（system_server）。
+     *
+     * **必要性**：`RemotePreferences` 在 Hook 进程是只读 + **进程内缓存**，且
+     * `OnSharedPreferenceChangeListener` 不跨进程回调（见 `ProcessConfiguration.refreshNow()` 注释）。
+     * 不推这一把，用户改完设置就得重启手机才生效 —— 曾因此被报「添加扇形应用无效」。
+     *
+     * 失败只记日志：广播只是"让改动尽快生效"，**远端落盘才是唯一真源**，推失败不影响正确性。
+     */
+    private fun pushConfigToHooks(settings: ModuleSettingsSnapshot) {
+        runCatching {
+            val payload = ConfigSnapshotCodec.encode(settings)
+            context.sendBroadcast(
+                Intent(SharedStateProtocol.ACTION_CONFIG_CHANGED)
+                    .putExtra(SharedStateProtocol.EXTRA_CONFIG, payload),
+            )
+            Log.i(TAG, "CONFIG_PUSH_SENT")
+        }.onFailure { exception ->
+            Log.w(TAG, "CONFIG_PUSH_SEND_FAILED", exception)
         }
     }
 

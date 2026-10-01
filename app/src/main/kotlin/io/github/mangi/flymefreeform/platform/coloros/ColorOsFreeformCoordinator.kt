@@ -17,6 +17,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import io.github.mangi.flymefreeform.config.ConfigSnapshotCodec
 import io.github.mangi.flymefreeform.config.ModulePreferences
 import io.github.mangi.flymefreeform.config.SharedSettings
 import java.util.ArrayDeque
@@ -133,6 +134,7 @@ internal class ColorOsFreeformCoordinator(
         handler.post {
             recentFreeformEntries.addAll(configuration.readRecentFreeform())
             registerToolRequestReceiver()
+            registerConfigPushReceiver()
             // 开机主动拉目录：Settings 副本不再依赖"用户先开一次面板"。
             sidebar.requestToolCatalog()
             environmentState.start(context)
@@ -498,6 +500,38 @@ internal class ColorOsFreeformCoordinator(
             )
         } catch (exception: Exception) {
             logger(Log.WARN, "TOOL_REQUEST_RECEIVER_FAILED", exception)
+        }
+    }
+
+    /**
+     * @author bomo 接收模块 App 推来的**配置变更**（编解码见 `ConfigSnapshotCodec`）。
+     *
+     * 本进程读 RemotePreferences 是 `start()` 时的**进程内缓存**，无法自行感知设置改动
+     * （见 `ProcessConfiguration.refreshNow()` 注释）；由 App 主动推送是唯一可靠的实时通道。
+     * 解码失败时保持原配置不动，只留一条诊断码，不影响既有行为。
+     */
+    private fun registerConfigPushReceiver() {
+        try {
+            context.registerReceiver(
+                object : BroadcastReceiver() {
+                    override fun onReceive(receiverContext: Context?, intent: Intent?) {
+                        val next =
+                            ConfigSnapshotCodec.decode(
+                                intent?.getStringExtra(SharedStateProtocol.EXTRA_CONFIG),
+                            )
+                        if (next == null) {
+                            logger(Log.WARN, "CONFIG_PUSH_DECODE_FAILED", null)
+                            return
+                        }
+                        if (configuration.applyExternal(next)) {
+                            logger(Log.INFO, "CONFIG_PUSH_APPLIED", null)
+                        }
+                    }
+                },
+                IntentFilter(SharedStateProtocol.ACTION_CONFIG_CHANGED),
+            )
+        } catch (exception: Exception) {
+            logger(Log.WARN, "CONFIG_PUSH_RECEIVER_FAILED", exception)
         }
     }
 

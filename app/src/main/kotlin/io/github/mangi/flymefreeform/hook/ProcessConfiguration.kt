@@ -51,6 +51,25 @@ internal class ProcessConfiguration(
         refresh(store, false)
     }
 
+    /**
+     * @author bomo 应用「外部推来」的配置（模块 App 经广播送来）。
+     *
+     * 存在的意义：本进程读 `RemotePreferences` 是 `start()` 时的**进程内缓存**（见 [refreshNow]），
+     * App 改完配置本进程感知不到。由 App 直接把新配置推过来即可绕开该缓存，实现「改完立即生效」。
+     *
+     * @param next 调用方已解析好的配置快照
+     * @return 是否发生了实际变更（未变化时不打扰监听者）
+     */
+    fun applyExternal(next: ModuleSettingsSnapshot): Boolean {
+        if (next == snapshot) return false
+        snapshot = next
+        isAvailable = true
+        log(Log.INFO, if (next.enabled) "MODULE_STATE_ENABLED" else "MODULE_STATE_DISABLED", null)
+        log(Log.INFO, "MODULE_STATE_RELOADED_EXTERNAL", null)
+        listeners.forEach { listener -> listener(next) }
+        return true
+    }
+
     fun removeObserver(listener: (ModuleSettingsSnapshot) -> Unit) {
         listeners -= listener
     }

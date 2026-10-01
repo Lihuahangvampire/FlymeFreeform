@@ -29,6 +29,18 @@ internal object SharedStateProtocol {
      */
     const val ACTION_REQUEST_TOOLS = "io.github.mangi.flymefreeform.action.REQUEST_TOOLS"
 
+    /**
+     * @author bomo App 改完设置后，把**整份配置**推给 Hook 进程（system_server）。
+     *
+     * 为什么必须推：`RemotePreferences` 在 Hook 进程只读且带**进程内缓存**，变更也不跨进程回调
+     * （见 `ProcessConfiguration.refreshNow()` 注释）—— 不推这一把，用户改完设置就得重启手机
+     * 才生效（曾因此被报「添加扇形应用无效」）。
+     */
+    const val ACTION_CONFIG_CHANGED = "io.github.mangi.flymefreeform.action.CONFIG_CHANGED"
+
+    /** 配置载荷：[ConfigSnapshotCodec.encode] 产出的文本。 */
+    const val EXTRA_CONFIG = "config"
+
     /** 侧边栏包名；用于校验目录广播的来源。 */
     const val SIDEBAR_PACKAGE = "com.coloros.smartsidebar"
 

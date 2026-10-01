@@ -20,7 +20,7 @@ class FlymeFreeformApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        frameworkConnectionRepository = FrameworkConnectionRepository().also { it.start() }
+        frameworkConnectionRepository = FrameworkConnectionRepository(this).also { it.start() }
         launcherAppRepository =
             // 远端配置（App 落盘，带 72px WEBP 图标）优先；Settings.Global 只有去图标
             // 文本副本（单值上限 32KB，实测带图标被拒），作框架未连接时的兜底。
