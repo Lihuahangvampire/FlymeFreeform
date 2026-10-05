@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -721,29 +722,30 @@ internal class CornerRadialOverlayView(
         val iconSize = with(density) { metrics.iconDiameter.toDp() }
         val labelGap = with(density) { (metrics.labelTopOffset - metrics.iconDiameter / 2f).toDp() }
         val labelSize = with(density) { metrics.labelTextSize.toSp() }
-        // @author bomo 按首字母分组的锚点：label 首字符（A-Z / #）→ 该字母组第一个应用下标。
-        val anchors: List<Pair<Char, Int>> = remember(catalog.panelApps) {
-            val firstByLetter = LinkedHashMap<Char, Int>()
-            catalog.panelApps.forEachIndexed { index, entry ->
-                val initial = initialOf(entry.label)
-                if (!firstByLetter.containsKey(initial)) firstByLetter[initial] = index
-            }
-            firstByLetter.entries
-                .sortedWith(
-                    Comparator { first, second ->
-                        val firstHash = first.key == '#'
-                        val secondHash = second.key == '#'
-                        when {
-                            firstHash && !secondHash -> 1
-                            secondHash && !firstHash -> -1
-                            else -> first.key.compareTo(second.key)
-                        }
-                    },
-                )
-                .map { entry -> entry.key to entry.value }
+        // @author bomo 按首字母分组：字母（A-Z 后 #）→ 该字母下的全部应用，
+        // 组内保持 panelApps 相对顺序（最近使用在该字母内仍靠前）。
+        val grouped: List<Pair<Char, List<RadialAppEntry>>> = remember(catalog.panelApps) {
+            val letters = LinkedHashSet<Char>()
+            catalog.panelApps.forEach { entry -> letters.add(initialOf(entry.label)) }
+            letters.sortedWith { first, second ->
+                when {
+                    first == '#' && second != '#' -> 1
+                    second == '#' && first != '#' -> -1
+                    else -> first.compareTo(second)
+                }
+            }.map { letter -> letter to catalog.panelApps.filter { initialOf(it.label) == letter } }
         }
-        val letters = anchors.map { it.first }
-        val targets = anchors.map { it.second }
+        val letters = grouped.map { it.first }
+        // 每个字母组标题行在网格中的 item 下标（累计前导标题行数）。
+        val headerTargets: List<Int> = remember(grouped) {
+            val list = mutableListOf<Int>()
+            var acc = 0
+            grouped.forEach { (_, apps) ->
+                list.add(acc)
+                acc += apps.size + 1
+            }
+            list
+        }
         val gridState = rememberLazyGridState()
         val scope = rememberCoroutineScope()
         var activeLetter by remember { mutableStateOf<Char?>(null) }
@@ -801,39 +803,62 @@ internal class CornerRadialOverlayView(
                 verticalArrangement = Arrangement.Top,
                 userScrollEnabled = inputEnabled,
             ) {
-                items(
-                    items = catalog.panelApps,
-                    key = { entry -> entry.component.flattenToShortString() },
-                ) { entry ->
-                    Column(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .height(cellHeight)
-                                .clickable(enabled = inputEnabled) {
-                                    listener.onAppCommitted(entry)
-                                },
-                        horizontalAlignment = Alignment.CenterHorizontally,
+                grouped.forEach { (letter, apps) ->
+                    item(
+                        key = "more_panel_header_$letter",
+                        span = { GridItemSpan(maxLineSpan) },
                     ) {
-                        panelImages[entry.component]?.let { image ->
-                            Image(
-                                bitmap = image,
-                                contentDescription = null,
-                                modifier = Modifier.size(iconSize),
-                                filterQuality = FilterQuality.High,
+                        // @author bomo 字母组标题行：左上角显示首字母。
+                        Text(
+                            text = letter.toString(),
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        start = horizontalPadding + 4.dp,
+                                        top = 8.dp,
+                                        bottom = 4.dp,
+                                    ),
+                            color = labelColor.copy(alpha = 0.75f),
+                            fontSize = labelSize,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.sp,
+                        )
+                    }
+                    items(
+                        items = apps,
+                        key = { entry -> entry.component.flattenToShortString() },
+                    ) { entry ->
+                        Column(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(cellHeight)
+                                    .clickable(enabled = inputEnabled) {
+                                        listener.onAppCommitted(entry)
+                                    },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            panelImages[entry.component]?.let { image ->
+                                Image(
+                                    bitmap = image,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(iconSize),
+                                    filterQuality = FilterQuality.High,
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(labelGap))
+                            Text(
+                                text = entry.label,
+                                modifier = Modifier.fillMaxWidth(),
+                                color = labelColor,
+                                fontSize = labelSize,
+                                letterSpacing = 0.sp,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        Spacer(modifier = Modifier.height(labelGap))
-                        Text(
-                            text = entry.label,
-                            modifier = Modifier.fillMaxWidth(),
-                            color = labelColor,
-                            fontSize = labelSize,
-                            letterSpacing = 0.sp,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
                     }
                 }
             }
@@ -886,7 +911,7 @@ internal class CornerRadialOverlayView(
                                         val letter = letters[index]
                                         if (letter != activeLetter) {
                                             activeLetter = letter
-                                            scope.launch { gridState.scrollToItem(targets[index]) }
+                                            scope.launch { gridState.scrollToItem(headerTargets[index]) }
                                         }
                                     }
                                     detectDragGestures(
@@ -905,7 +930,7 @@ internal class CornerRadialOverlayView(
                                         val letter = letters[index]
                                         if (letter != activeLetter) {
                                             activeLetter = letter
-                                            scope.launch { gridState.scrollToItem(targets[index]) }
+                                            scope.launch { gridState.scrollToItem(headerTargets[index]) }
                                         }
                                     }
                                 },
