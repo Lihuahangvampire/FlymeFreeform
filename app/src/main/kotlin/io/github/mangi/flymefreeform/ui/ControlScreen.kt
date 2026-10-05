@@ -594,7 +594,7 @@ private fun SettingsCard(
 
 /**
  * @author bomo 扇形选中圈颜色选择：点击行右侧色块展开 HSV 颜色选择器
- * （色相条 + 饱和度 / 亮度平面），拖动或点按即选色并写入远端配置；
+ * （色相条 + 饱和度 / 亮度平面），拖动即实时预览、松手写入远端配置；
  * 展开区内提供「跟随系统」选项恢复动态取系统强调蓝。
  */
 @Composable
@@ -605,6 +605,8 @@ private fun SelectionColorPreference(
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     var isDragging by remember { mutableStateOf(false) }
+    // 松手提交后、远端配置确认前保持预览色，避免色块闪回旧值再跳新值。
+    var pendingArgb by remember { mutableStateOf<Int?>(null) }
     val baseArgb =
         if (selectedArgb == ModulePreferences.SELECTION_RING_COLOR_SYSTEM) {
             0xFF0A84FF.toInt()
@@ -615,7 +617,7 @@ private fun SelectionColorPreference(
     var draftSaturation by remember { mutableFloatStateOf(0f) }
     var draftValue by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(baseArgb) {
-        if (!isDragging) {
+        if (!isDragging && pendingArgb == null) {
             val hsv = FloatArray(3)
             AndroidColor.colorToHSV(baseArgb, hsv)
             draftHue = hsv[0]
@@ -623,12 +625,21 @@ private fun SelectionColorPreference(
             draftValue = hsv[2]
         }
     }
-    val currentSwatchBrush =
-        if (selectedArgb == ModulePreferences.SELECTION_RING_COLOR_SYSTEM) {
-            Brush.linearGradient(listOf(Color(0xFF0A84FF), Color(0xFF6FD0FF)))
-        } else {
-            null
+    // 远端确认后解除 pending，色块自然切换到 selectedArgb（数值相同，无跳变）。
+    LaunchedEffect(selectedArgb) {
+        if (pendingArgb != null && selectedArgb == pendingArgb) {
+            pendingArgb = null
         }
+    }
+    val draftArgb =
+        AndroidColor.HSVToColor(floatArrayOf(draftHue, draftSaturation, draftValue))
+    // 拖动中 / 待确认期间用本地预览色，否则用远端配置色（跟随系统时显示渐变蓝）。
+    val showingSystemStyle =
+        selectedArgb == ModulePreferences.SELECTION_RING_COLOR_SYSTEM &&
+            !isDragging &&
+            pendingArgb == null
+    val showingPreview = isDragging || pendingArgb != null
+    val swatchColorArgb = if (showingPreview) draftArgb else selectedArgb
     BasicComponent(
         title = stringResource(R.string.selection_ring_color_title),
         summary = stringResource(R.string.selection_ring_color_summary),
@@ -638,7 +649,7 @@ private fun SelectionColorPreference(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (selectedArgb == ModulePreferences.SELECTION_RING_COLOR_SYSTEM) {
+                if (showingSystemStyle) {
                     Text(
                         text = stringResource(R.string.selection_ring_color_system),
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
@@ -651,10 +662,14 @@ private fun SelectionColorPreference(
                             .size(24.dp)
                             .clip(CircleShape)
                             .then(
-                                if (currentSwatchBrush != null) {
-                                    Modifier.background(currentSwatchBrush)
+                                if (showingSystemStyle) {
+                                    Modifier.background(
+                                        Brush.linearGradient(
+                                            listOf(Color(0xFF0A84FF), Color(0xFF6FD0FF)),
+                                        ),
+                                    )
                                 } else {
-                                    Modifier.background(Color(selectedArgb))
+                                    Modifier.background(Color(swatchColorArgb))
                                 },
                             )
                             .border(1.dp, Color(0x33000000), CircleShape)
@@ -680,9 +695,10 @@ private fun SelectionColorPreference(
             },
             onDragEnd = {
                 isDragging = false
-                onColorChange(
-                    AndroidColor.HSVToColor(floatArrayOf(draftHue, draftSaturation, draftValue)),
-                )
+                val argb =
+                    AndroidColor.HSVToColor(floatArrayOf(draftHue, draftSaturation, draftValue))
+                pendingArgb = argb
+                onColorChange(argb)
             },
         )
         BasicComponent(
@@ -701,6 +717,8 @@ private fun SelectionColorPreference(
                                 ),
                             )
                             .clickable(enabled = enabled) {
+                                pendingArgb = null
+                                isDragging = false
                                 onColorChange(ModulePreferences.SELECTION_RING_COLOR_SYSTEM)
                                 expanded = false
                             },

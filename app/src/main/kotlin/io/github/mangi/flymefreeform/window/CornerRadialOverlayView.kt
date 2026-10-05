@@ -1189,7 +1189,7 @@ internal class CornerRadialOverlayView(
         /** @author bomo 选中项的放大尺度（1.3 = 放大 30%）：图标与紧贴它的选中圈同步放大。 */
         const val SELECTION_RING_ENLARGE_SCALE = 1.3f
         /** @author bomo 「更多」宫格格心间距系数（<1 = 四格更紧凑；1 = 铺满圆盘）。 */
-        const val MORE_GRID_COMPACT_FRACTION = 0.82f
+        const val MORE_GRID_COMPACT_FRACTION = 0.72f
         /** @author bomo 系统强调蓝解析失败时的回退色（ColorOS 风格蓝）。 */
         val FALLBACK_SELECTION_RING_COLOR = Color(0xFF0A84FF)
         /** @author bomo 扇形半径缩放系数的钳制区间（对应设置百分比 60% ~ 150%）。 */
