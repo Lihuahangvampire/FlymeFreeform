@@ -32,8 +32,9 @@ class InitialIndexTest {
         assertEquals('#', InitialIndex.initialOf("12306"))
         assertEquals('#', InitialIndex.initialOf("&%#"))
         assertEquals('#', InitialIndex.initialOf(""))
-        // 「哔」不在 GB2312 一级汉字表内（二级字按部首排序），归入 '#'。
-        assertEquals('#', InitialIndex.initialOf("哔哩哔哩"))
+        // 全字库表覆盖 GB2312 二级汉字（如「哔」→ B）。
+        assertEquals('B', InitialIndex.initialOf("哔哩哔哩"))
+        assertEquals('B', InitialIndex.pinyinInitialOf('哔'))
     }
 
     @Test
