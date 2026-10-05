@@ -392,6 +392,7 @@ internal class ColorOsFreeformCoordinator(
                 catalog = catalogSnapshot,
                 x = x,
                 y = y,
+                radiusScale = lastSettings.radialRadiusPercent / 100f,
             )
             overlay = view
             windowManager.addView(view, params)

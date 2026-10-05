@@ -56,6 +56,46 @@ class RadialIconGeometryTest {
         assertEquals(fit(400f, 890f), fit(890f, 400f))
     }
 
+    /** @author bomo 扇形半径缩放：两圈与选中判定半径同比例变化，图标直径不动。 */
+    @Test
+    fun radiusScaleScalesRingsButNotIcons() {
+        val baseline = RadialIconGeometry.fit(400f, 890f, 1f, OverlaySafeInsets(), 7, innerCount = 3)
+        val enlarged =
+            RadialIconGeometry.fit(400f, 890f, 1f, OverlaySafeInsets(), 7, innerCount = 3, radiusScale = 1.3f)
+        assertEquals(baseline.radius * 1.3f, enlarged.radius, 0.001f)
+        assertEquals(baseline.innerRadius * 1.3f, enlarged.innerRadius, 0.001f)
+        assertEquals(baseline.selectionEnterRadius * 1.3f, enlarged.selectionEnterRadius, 0.001f)
+        assertEquals(baseline.selectionKeepRadius * 1.3f, enlarged.selectionKeepRadius, 0.001f)
+        assertEquals(baseline.iconDiameter, enlarged.iconDiameter, 0.001f)
+        assertEquals(baseline.innerIconDiameter, enlarged.innerIconDiameter, 0.001f)
+    }
+
+    /** @author bomo 半径缩小端同比例生效，且默认 1f 时行为与旧版完全一致。 */
+    @Test
+    fun radiusScaleShrinksRingsAndDefaultIsIdentity() {
+        val full = RadialIconGeometry.fit(400f, 890f, 1f, OverlaySafeInsets(), 7, innerCount = 3)
+        assertEquals(full, RadialIconGeometry.fit(400f, 890f, 1f, OverlaySafeInsets(), 7, innerCount = 3, radiusScale = 1f))
+        val shrunk =
+            RadialIconGeometry.fit(400f, 890f, 1f, OverlaySafeInsets(), 7, innerCount = 3, radiusScale = 0.6f)
+        assertEquals(full.radius * 0.6f, shrunk.radius, 0.001f)
+        assertEquals(full.selectionKeepRadius * 0.6f, shrunk.selectionKeepRadius, 0.001f)
+    }
+
+    /** @author bomo 半径放大超出屏幕安全区时整体压缩兜底，外缘不越界。 */
+    @Test
+    fun radiusScaleOverflowIsClampedBySafeArea() {
+        val insets = OverlaySafeInsets(left = 60f, right = 60f, top = 80f, bottom = 120f)
+        val baseline = fit(insets = insets)
+        val enlarged =
+            RadialIconGeometry.fit(400f, 890f, 1f, insets, 7, radiusScale = 1.5f)
+        assertTrue(enlarged.radius > baseline.radius)
+        val safeWidth = 400f - insets.left - insets.right
+        val safeHeight = 890f - insets.top - insets.bottom
+        val outerExtent = enlarged.radius + enlarged.iconDiameter / 2f
+        assertTrue(outerExtent <= safeWidth + 0.01f)
+        assertTrue(outerExtent <= safeHeight + 0.01f)
+    }
+
     @Test
     fun constrainedSpaceShrinksEverythingWithoutDependingOnCount() {
         val insets = OverlaySafeInsets(left = 170f, right = 170f, top = 50f, bottom = 100f)
@@ -128,7 +168,8 @@ class RadialIconGeometryTest {
                 val outerInnerEdge = metrics.radius - metrics.iconDiameter / 2f
                 val innerOuterEdge = metrics.innerRadius + metrics.innerIconDiameter / 2f
                 val gap = outerInnerEdge - innerOuterEdge
-                assertTrue("gap=$gap outer=$outerCount inner=$innerCount", gap >= 18f)
+                // 18f 为 RING_GAP_DP 的精确值；浮点链可能差出 ~1e-5，留 1e-3 容差。
+                assertTrue("gap=$gap outer=$outerCount inner=$innerCount", gap >= 18f - 0.001f)
                 assertTrue("inner must be inside outer", metrics.innerRadius > 0f)
                 assertTrue(metrics.innerRadius < metrics.radius)
                 // 误触的根源不是"看着近"，而是两圈中心距 ≤ 保持半径：

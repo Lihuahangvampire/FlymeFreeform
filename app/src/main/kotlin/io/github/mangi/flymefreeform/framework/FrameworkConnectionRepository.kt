@@ -110,6 +110,17 @@ internal class FrameworkConnectionRepository(
             )
         }
 
+    /**
+     * @author bomo 设置扇形外圈 / 内圈半径缩放百分比。
+     * 只写配置；扇形在**下次呼出**时读取，因此不需要重启或重装。
+     */
+    fun setRadialRadiusPercent(percent: Int) =
+        updateSettings {
+            it.copy(
+                radialRadiusPercent = ModulePreferences.coerceRadialRadiusPercent(percent),
+            )
+        }
+
     fun setOutsideTapCloseMode(mode: OutsideTapCloseMode) =
         updateSettings { it.copy(outsideTapCloseMode = mode) }
 

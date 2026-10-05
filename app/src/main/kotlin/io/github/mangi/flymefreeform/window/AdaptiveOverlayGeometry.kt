@@ -91,6 +91,8 @@ internal object AdaptiveOverlayGeometry {
         fontScale: Float,
         panelItemCount: Int,
         anchorOnLeft: Boolean,
+        /** @author bomo 扇形外圈 / 内圈半径缩放系数（1 = 原尺寸）。 */
+        radiusScale: Float = 1f,
     ): AdaptiveOverlayMetrics {
         require(width > 0f && height > 0f)
 
@@ -104,7 +106,16 @@ internal object AdaptiveOverlayGeometry {
         val panelReferenceRadius =
             min(shortEdge * PANEL_REFERENCE_WIDTH_FRACTION, safeHeight * PANEL_REFERENCE_HEIGHT_FRACTION)
                 .coerceAtLeast(plateDiameter * PANEL_REFERENCE_MIN_PLATE_DISTANCE)
-        val radial = RadialIconGeometry.fit(width, height, density, radialInsets, radialItemCount, radialInnerCount)
+        val radial =
+            RadialIconGeometry.fit(
+                width,
+                height,
+                density,
+                radialInsets,
+                radialItemCount,
+                radialInnerCount,
+                radiusScale,
+            )
 
         val outerMargin = plateDiameter * OUTER_MARGIN_FRACTION
         val requestedContentHorizontalPadding = plateDiameter * PANEL_HORIZONTAL_PADDING_FRACTION

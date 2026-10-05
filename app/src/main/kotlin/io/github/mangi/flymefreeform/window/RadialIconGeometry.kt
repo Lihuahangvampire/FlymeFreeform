@@ -35,6 +35,11 @@ internal object RadialIconGeometry {
      */
     private const val RING_GAP_DP = 18f
 
+    /**
+     * @author bomo 外圈 / 内圈半径缩放系数（1 = 原尺寸，0.6 ~ 1.5）。
+     * 两圈同心缩放：外圈半径、内圈半径、选中判定半径（进入 / 保持）同比例变化，
+     * 图标直径不动；放大超出屏幕安全区时由 [fitScale] 整体压缩兜底，不会画出屏幕。
+     */
     fun fit(
         width: Float,
         height: Float,
@@ -42,10 +47,12 @@ internal object RadialIconGeometry {
         safeInsets: OverlaySafeInsets,
         itemCount: Int,
         innerCount: Int = 0,
+        radiusScale: Float = 1f,
     ): RadialVisualMetrics {
         require(width.isFinite() && width > 0f && height.isFinite() && height > 0f)
         require(density.isFinite() && density > 0f)
         require(itemCount >= 1)
+        require(radiusScale.isFinite() && radiusScale > 0f)
         val safeWidth = (width - safeInsets.left - safeInsets.right).coerceAtLeast(0f)
         val safeHeight = (height - safeInsets.top - safeInsets.bottom).coerceAtLeast(0f)
         val windowScale = (minOf(width, height) / density) / BASE_SHORT_EDGE_DP
@@ -61,8 +68,9 @@ internal object RadialIconGeometry {
         val diameterDp = BASE_ICON_DIAMETER_DP.coerceAtMost(maxDiameterDp)
         // 为整个四分之一圆弧保留同一外缘，避免增删条目时安全区适配改变半径。
         // 外缘包含入场回摆和选中外圈；选中不改变图标大小。
+        // @author bomo 半径缩放计入外缘预算：放大后若超出安全区，fitScale 整体压缩兜底。
         val requestedExtent =
-            (BASE_RADIUS_DP + diameterDp * 1.05f / 2f + BASE_ITEM_PADDING_DP +
+            (BASE_RADIUS_DP * radiusScale + diameterDp * 1.05f / 2f + BASE_ITEM_PADDING_DP +
                 RadialEntryMotion.HORIZONTAL_OVERSHOOT_DP) * pixelsPerBaseDp
         val fitScale = minOf(1f, safeWidth / requestedExtent, safeHeight / requestedExtent)
         val unit = pixelsPerBaseDp * fitScale
@@ -81,15 +89,15 @@ internal object RadialIconGeometry {
                 diameterDp.coerceAtMost(
                     (innerChordDp - BASE_ITEM_PADDING_DP).coerceAtLeast(MIN_ICON_DIAMETER_DP),
                 )
-            innerRadius = (BASE_RADIUS_DP - (diameterDp + innerDiameterDp) / 2f - RING_GAP_DP) * unit
+            innerRadius = (BASE_RADIUS_DP - (diameterDp + innerDiameterDp) / 2f - RING_GAP_DP) * unit * radiusScale
             innerDiameter = innerDiameterDp * unit
         }
         return RadialVisualMetrics(
-            radius = BASE_RADIUS_DP * unit,
+            radius = BASE_RADIUS_DP * unit * radiusScale,
             plateDiameter = diameter,
             iconDiameter = diameter,
-            selectionEnterRadius = diameter * 0.9f,
-            selectionKeepRadius = diameter * 1.25f,
+            selectionEnterRadius = diameter * 0.9f * radiusScale,
+            selectionKeepRadius = diameter * 1.25f * radiusScale,
             itemPadding = BASE_ITEM_PADDING_DP * unit,
             pixelsPerBaseDp = unit,
             innerRadius = innerRadius,

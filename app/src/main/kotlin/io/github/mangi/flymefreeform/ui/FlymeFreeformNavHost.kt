@@ -40,6 +40,8 @@ internal fun FlymeFreeformNavHost(
     onTriggerVerticalDpChange: (Int) -> Unit,
     /** @author bomo 「全部」面板缩放百分比变更。 */
     onPanelScaleChange: (Int) -> Unit,
+    /** @author bomo 扇形外圈 / 内圈半径缩放百分比变更。 */
+    onRadialRadiusChange: (Int) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
     /** @author bomo 外圈固定应用未满时用最近使用补齐（开关）。 */
@@ -84,6 +86,7 @@ internal fun FlymeFreeformNavHost(
                         onTriggerHorizontalDpChange = onTriggerHorizontalDpChange,
                         onTriggerVerticalDpChange = onTriggerVerticalDpChange,
                         onPanelScaleChange = onPanelScaleChange,
+                        onRadialRadiusChange = onRadialRadiusChange,
                         onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
                         onHandleSwipeUpToMiniEnabledChange =
                             onHandleSwipeUpToMiniEnabledChange,

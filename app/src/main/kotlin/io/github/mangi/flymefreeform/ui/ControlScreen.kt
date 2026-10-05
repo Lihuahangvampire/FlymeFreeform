@@ -101,6 +101,8 @@ internal fun ControlScreen(
     onTriggerVerticalDpChange: (Int) -> Unit,
     /** @author bomo 「全部」面板缩放百分比变更（设置界面滑条，热生效）。 */
     onPanelScaleChange: (Int) -> Unit,
+    /** @author bomo 扇形外圈 / 内圈半径缩放百分比变更（设置界面滑条，下次呼出生效）。 */
+    onRadialRadiusChange: (Int) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
     /** @author bomo 外圈固定应用未满时用最近使用补齐（开关）。 */
@@ -182,6 +184,7 @@ internal fun ControlScreen(
                             onTriggerVerticalDpChange = onTriggerVerticalDpChange,
                             onCornerRangePreviewChange = { cornerRangePreview = it },
                             onPanelScaleChange = onPanelScaleChange,
+                            onRadialRadiusChange = onRadialRadiusChange,
                             onNavigateToPinnedApps,
                         )
                     }
@@ -375,6 +378,8 @@ private fun SettingsCard(
     onCornerRangePreviewChange: (TriggerRangePreview?) -> Unit,
     /** @author bomo 「全部」面板缩放百分比变更。 */
     onPanelScaleChange: (Int) -> Unit,
+    /** @author bomo 扇形外圈 / 内圈半径缩放百分比变更。 */
+    onRadialRadiusChange: (Int) -> Unit,
     onNavigateToPinnedApps: () -> Unit,
 ) {
     val moduleSummary =
@@ -508,7 +513,26 @@ private fun SettingsCard(
             enabled = state.canChangeSettings,
             title = stringResource(R.string.panel_scale_title),
             summary = stringResource(R.string.panel_scale_summary),
+            valueRange =
+                ModulePreferences.MIN_PANEL_SCALE_PERCENT.toFloat()..
+                    ModulePreferences.MAX_PANEL_SCALE_PERCENT.toFloat(),
+            coerceValue = ModulePreferences::coercePanelScalePercent,
             onCommit = onPanelScaleChange,
+        )
+        // @author bomo 扇形半径滑条：两圈（外圈 + 内圈）同心缩放，写入远端配置后
+        // 侧边栏进程在**下次呼出扇形**时读取，调整后无需重启/重装即可看到效果。
+        RemotePercentSliderPreference(
+            icon = Icons.Rounded.Straighten,
+            confirmedValue = state.settings.radialRadiusPercent,
+            isUpdating = state.isUpdating,
+            enabled = state.canChangeSettings,
+            title = stringResource(R.string.radial_radius_title),
+            summary = stringResource(R.string.radial_radius_summary),
+            valueRange =
+                ModulePreferences.MIN_RADIAL_RADIUS_PERCENT.toFloat()..
+                    ModulePreferences.MAX_RADIAL_RADIUS_PERCENT.toFloat(),
+            coerceValue = ModulePreferences::coerceRadialRadiusPercent,
+            onCommit = onRadialRadiusChange,
         )
         ArrowPreference(
             title = stringResource(R.string.radial_apps_title),
@@ -612,6 +636,9 @@ private fun RemotePercentSliderPreference(
     enabled: Boolean,
     title: String,
     summary: String,
+    /** @author bomo 滑条取值区间与钳制函数（面板缩放 / 扇形半径各有口径，不可共用）。 */
+    valueRange: ClosedFloatingPointRange<Float>,
+    coerceValue: (Int) -> Int,
     onCommit: (Int) -> Unit,
 ) {
     var draftValue by rememberSaveable { mutableFloatStateOf(confirmedValue.toFloat()) }
@@ -623,25 +650,18 @@ private fun RemotePercentSliderPreference(
         value = draftValue,
         onValueChange = { value ->
             isDragging = true
-            draftValue =
-                ModulePreferences.coercePanelScalePercent(value.roundToInt()).toFloat()
+            draftValue = coerceValue(value.roundToInt()).toFloat()
         },
         title = title,
         summary = summary,
         valueText = stringResource(R.string.percent_value, draftValue.roundToInt()),
         enabled = enabled,
         startAction = { PreferenceIcon(icon, enabled) },
-        valueRange =
-            ModulePreferences.MIN_PANEL_SCALE_PERCENT.toFloat()..
-                ModulePreferences.MAX_PANEL_SCALE_PERCENT.toFloat(),
-        steps =
-            ModulePreferences.MAX_PANEL_SCALE_PERCENT -
-                ModulePreferences.MIN_PANEL_SCALE_PERCENT -
-                1,
+        valueRange = valueRange,
+        steps = valueRange.endInclusive.toInt() - valueRange.start.toInt() - 1,
         onValueChangeFinished = {
             isDragging = false
-            val committed =
-                ModulePreferences.coercePanelScalePercent(draftValue.roundToInt())
+            val committed = coerceValue(draftValue.roundToInt())
             draftValue = committed.toFloat()
             if (committed != confirmedValue) onCommit(committed)
         },

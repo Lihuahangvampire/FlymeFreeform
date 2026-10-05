@@ -16,6 +16,8 @@ internal data class ModuleSettingsSnapshot(
     val triggerVerticalDp: Int = ModulePreferences.DEFAULT_CORNER_TRIGGER_RANGE_DP,
     /** @author bomo 「全部」面板整体缩放百分比（见 `ModulePreferences.KEY_PANEL_SCALE_PERCENT`）。 */
     val panelScalePercent: Int = ModulePreferences.DEFAULT_PANEL_SCALE_PERCENT,
+    /** @author bomo 扇形外圈 / 内圈半径缩放百分比（见 `ModulePreferences.KEY_RADIAL_RADIUS_PERCENT`）。 */
+    val radialRadiusPercent: Int = ModulePreferences.DEFAULT_RADIAL_RADIUS_PERCENT,
     val pinsSaved: Boolean = false,
     val pinnedComponents: List<ComponentName> = emptyList(),
     val innerPinsSaved: Boolean = false,
@@ -58,6 +60,10 @@ internal data class ModuleSettingsSnapshot(
             .putInt(
                 ModulePreferences.KEY_PANEL_SCALE_PERCENT,
                 ModulePreferences.coercePanelScalePercent(panelScalePercent),
+            )
+            .putInt(
+                ModulePreferences.KEY_RADIAL_RADIUS_PERCENT,
+                ModulePreferences.coerceRadialRadiusPercent(radialRadiusPercent),
             )
             .putInt(
                 ModulePreferences.KEY_OUTSIDE_TAP_CLOSE_MODE,
@@ -142,6 +148,13 @@ internal data class ModuleSettingsSnapshot(
                         ModulePreferences.DEFAULT_PANEL_SCALE_PERCENT,
                     ),
                 )
+            val radialRadiusPercent =
+                ModulePreferences.coerceRadialRadiusPercent(
+                    preferences.getInt(
+                        ModulePreferences.KEY_RADIAL_RADIUS_PERCENT,
+                        ModulePreferences.DEFAULT_RADIAL_RADIUS_PERCENT,
+                    ),
+                )
             val outsideTapCloseMode =
                 OutsideTapCloseMode.fromStoredValue(
                     preferences.getInt(
@@ -187,6 +200,7 @@ internal data class ModuleSettingsSnapshot(
                 triggerHorizontalDp = triggerHorizontalDp,
                 triggerVerticalDp = triggerVerticalDp,
                 panelScalePercent = panelScalePercent,
+                radialRadiusPercent = radialRadiusPercent,
                 pinsSaved = pinsSaved,
                 pinnedComponents = pins,
                 outsideTapCloseMode = outsideTapCloseMode,

@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.content.Context
 import android.content.res.Configuration
+import android.content.res.Resources
 import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
@@ -136,6 +137,7 @@ internal class CornerRadialOverlayView(
     private var dismissing = false
     private var dismissNotified = false
     private var disposed = false
+    private var radialRadiusScale = 1f
     private var lastTickUptime = 0L
     private val timeout = Runnable(::requestDismiss)
     private val dismissFallback = Runnable(::completeRadialExit)
@@ -168,10 +170,13 @@ internal class CornerRadialOverlayView(
         catalog: AppCatalogSnapshot,
         x: Float,
         y: Float,
+        /** @author bomo 扇形外圈 / 内圈半径缩放系数（1 = 原尺寸），来自设置「扇形半径」。 */
+        radiusScale: Float = 1f,
     ) {
         check(!isAttachedToWindow) { "Overlay must be initialized before it is attached" }
         this.side = side
         this.catalog = catalog
+        radialRadiusScale = radiusScale.coerceIn(RADIAL_RADIUS_SCALE_MIN, RADIAL_RADIUS_SCALE_MAX)
         latestX = x
         latestY = y
         radialImages.value = catalog.radialApps.map { entry -> entry.icon.asImageBitmap() }
@@ -429,6 +434,8 @@ internal class CornerRadialOverlayView(
         itemRings: List<Animatable<Float, *>>,
         animationsEnabled: Boolean,
     ) {
+        // @author bomo 选中圈用系统强调蓝（ColorOS 动态取色），解析失败回退默认蓝。
+        val selectionRingColor = remember { resolveSelectionRingColor() }
         androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
             if (backdropOnlyState.value) {
                 drawRect(Color.Black, alpha = OverlayBackdrop.MAX_ALPHA * backdropAlpha.floatValue)
@@ -482,6 +489,7 @@ internal class CornerRadialOverlayView(
                 contentAlpha = alpha,
                 contentScale = if (panelModeState.value) handoffVisuals.contentScale else 1f,
                 itemRings = itemRings,
+                selectionRingColor = selectionRingColor,
             )
         }
     }
@@ -493,6 +501,7 @@ internal class CornerRadialOverlayView(
         contentAlpha: Float,
         contentScale: Float,
         itemRings: List<Animatable<Float, *>>,
+        selectionRingColor: Color,
     ) {
         val direction = if (layout.side == CornerSide.Left) 1f else -1f
         val overshoot = direction * RadialEntryMotion.HORIZONTAL_OVERSHOOT_DP * metrics.pixelsPerBaseDp * motion.horizontalOvershoot
@@ -518,9 +527,17 @@ internal class CornerRadialOverlayView(
                 }
                 val strokeWidth = metrics.selectionRingMaxWidth * scale * ringProgress
                 if (strokeWidth > 0f) {
+                    // @author bomo 选中圈：系统蓝 + 比图标放大 30%（SELECTION_RING_ENLARGE_SCALE），
+                    // 半径与描边同由 ringProgress（130ms 选中动画）驱动：
+                    // 半径从图标边缘扩散到 1.3 倍、描边从 0 变粗，形成「扩大」动效。
+                    val baseRadius = diameter / 2f
+                    val ringOuter =
+                        baseRadius +
+                            (baseRadius * SELECTION_RING_ENLARGE_SCALE + strokeWidth / 2f - baseRadius) *
+                            ringProgress
                     drawCircle(
-                        color = Color.White,
-                        radius = diameter / 2f + strokeWidth / 2f,
+                        color = selectionRingColor,
+                        radius = ringOuter,
                         center = Offset(centerX, centerY),
                         alpha = RadialEntryMotion.SELECTION_RING_ALPHA * contentAlpha,
                         style = Stroke(width = strokeWidth),
@@ -789,6 +806,7 @@ internal class CornerRadialOverlayView(
                 fontScale = resources.configuration.fontScale,
                 panelItemCount = catalog.panelApps.size,
                 anchorOnLeft = side == CornerSide.Left,
+                radiusScale = radialRadiusScale,
             )
         metricsState.value = metrics
         // 双圈：外圈 = 前 catalog.outerCount 个应用（含「更多」槽），其余进内圈。
@@ -1042,6 +1060,23 @@ internal class CornerRadialOverlayView(
             0f
         }
 
+    /**
+     * @author bomo 选中圈颜色：优先取系统强调蓝（ColorOS 动态取色，`system_accent1_500`），
+     * 解析失败回退 [FALLBACK_SELECTION_RING_COLOR]。框架资源对所有进程可读，仅解析一次。
+     */
+    private fun resolveSelectionRingColor(): Color {
+        val resources = Resources.getSystem()
+        val accentId = resources.getIdentifier("system_accent1_500", "color", "android")
+        if (accentId != 0) {
+            return try {
+                Color(resources.getColor(accentId, null))
+            } catch (_: Throwable) {
+                FALLBACK_SELECTION_RING_COLOR
+            }
+        }
+        return FALLBACK_SELECTION_RING_COLOR
+    }
+
     private data class ExitRequest(val pendingCommit: RadialAppEntry?, val entryProgress: Float)
 
     private companion object {
@@ -1067,6 +1102,13 @@ internal class CornerRadialOverlayView(
         const val GESTURE_TIMEOUT_MS = 5_000L
         const val PANEL_TIMEOUT_MS = 15_000L
         const val DISMISS_FALLBACK_GRACE_MS = 260L
+        /** @author bomo 选中圈相对图标直径的放大系数（1.3 = 放大 30%）。 */
+        const val SELECTION_RING_ENLARGE_SCALE = 1.3f
+        /** @author bomo 系统强调蓝解析失败时的回退色（ColorOS 风格蓝）。 */
+        val FALLBACK_SELECTION_RING_COLOR = Color(0xFF0A84FF)
+        /** @author bomo 扇形半径缩放系数的钳制区间（对应设置百分比 60% ~ 150%）。 */
+        const val RADIAL_RADIUS_SCALE_MIN = 0.6f
+        const val RADIAL_RADIUS_SCALE_MAX = 1.5f
     }
 }
 

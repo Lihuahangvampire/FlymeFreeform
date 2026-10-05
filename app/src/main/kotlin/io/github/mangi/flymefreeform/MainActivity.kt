@@ -38,6 +38,7 @@ class MainActivity : ComponentActivity() {
                     onTriggerHorizontalDpChange = repository::setTriggerHorizontalDp,
                     onTriggerVerticalDpChange = repository::setTriggerVerticalDp,
                     onPanelScaleChange = repository::setPanelScalePercent,
+                    onRadialRadiusChange = repository::setRadialRadiusPercent,
                     onOutsideTapCloseModeChange = repository::setOutsideTapCloseMode,
                     onHandleSwipeUpToMiniEnabledChange =
                         repository::setHandleSwipeUpToMiniEnabled,

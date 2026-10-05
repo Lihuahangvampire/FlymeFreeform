@@ -138,6 +138,23 @@ class ModuleSettingsSnapshotTest {
         assertTrue(ModuleSettingsSnapshot.readFrom(preferences).fillOuterWithRecent)
     }
 
+    /** @author bomo 扇形半径缩放百分比：默认 100，写入回读一致，越界钳制到合法区间。 */
+    @Test
+    fun radialRadiusPercentDefaultsRoundTripsAndClamps() {
+        assertEquals(100, ModuleSettingsSnapshot().radialRadiusPercent)
+
+        val preferences = InMemoryPreferences()
+        ModuleSettingsSnapshot(radialRadiusPercent = 130).writeTo(preferences.edit()).commit()
+        assertEquals(
+            130,
+            preferences.getInt(ModulePreferences.KEY_RADIAL_RADIUS_PERCENT, -1),
+        )
+        assertEquals(130, ModuleSettingsSnapshot.readFrom(preferences).radialRadiusPercent)
+
+        assertEquals(150, ModulePreferences.coerceRadialRadiusPercent(200))
+        assertEquals(60, ModulePreferences.coerceRadialRadiusPercent(10))
+    }
+
     /** @author bomo 面板缩放：读入越界脏值应钳到合法区间（滑条与远端配置都可能写入越界值）。 */
     @Test
     fun panelScaleIsClampedWhenRead() {

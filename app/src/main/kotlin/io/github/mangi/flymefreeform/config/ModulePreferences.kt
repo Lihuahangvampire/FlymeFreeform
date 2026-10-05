@@ -54,6 +54,16 @@ internal object ModulePreferences {
     const val MIN_PANEL_SCALE_PERCENT = 50
     const val MAX_PANEL_SCALE_PERCENT = 100
 
+    /**
+     * @author bomo 扇形外圈 / 内圈半径缩放百分比（100 = 原尺寸）。
+     * 写入方是模块 App（设置界面的滑条），侧边栏进程每次呼出扇形时按只读方式取值，
+     * 因此改完滑条**下次呼出即生效**，无需重启。两圈同心缩放，间距随比例等比变化。
+     */
+    const val KEY_RADIAL_RADIUS_PERCENT = "radial_radius_percent_v1"
+    const val DEFAULT_RADIAL_RADIUS_PERCENT = 100
+    const val MIN_RADIAL_RADIUS_PERCENT = 60
+    const val MAX_RADIAL_RADIUS_PERCENT = 150
+
     const val DEFAULT_ENABLED = false
     const val DEFAULT_CORNER_ENABLED = true
     const val DEFAULT_CORNER_TRIGGER_RANGE_DP = 84
@@ -106,4 +116,8 @@ internal object ModulePreferences {
     /** @author bomo 面板缩放百分比钳制；下限防止条目小到点不中，上限即原尺寸。 */
     fun coercePanelScalePercent(value: Int): Int =
         value.coerceIn(MIN_PANEL_SCALE_PERCENT, MAX_PANEL_SCALE_PERCENT)
+
+    /** @author bomo 扇形半径缩放百分比钳制；下限避免图标贴得太近，上限由屏幕安全区兜底。 */
+    fun coerceRadialRadiusPercent(value: Int): Int =
+        value.coerceIn(MIN_RADIAL_RADIUS_PERCENT, MAX_RADIAL_RADIUS_PERCENT)
 }
