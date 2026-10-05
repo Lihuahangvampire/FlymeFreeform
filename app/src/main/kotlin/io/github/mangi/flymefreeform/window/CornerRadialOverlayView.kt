@@ -954,15 +954,8 @@ internal class CornerRadialOverlayView(
         }
     }
 
-    /** @author bomo 应用 label 首字符：ASCII 字母取大写，其余（中文等）归入 '#'。 */
-    private fun initialOf(label: String): Char {
-        val code = label.firstOrNull()?.code ?: return '#'
-        return when (code) {
-            in 'A'.code..'Z'.code -> code.toChar()
-            in 'a'.code..'z'.code -> (code - 32).toChar()
-            else -> '#'
-        }
-    }
+    /** @author bomo 分组字母：ASCII 字母取大写，中文按拼音首字母（见 [InitialIndex]）。 */
+    private fun initialOf(label: String): Char = InitialIndex.initialOf(label)
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
