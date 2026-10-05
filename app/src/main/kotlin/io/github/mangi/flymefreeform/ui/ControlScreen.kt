@@ -409,9 +409,10 @@ private fun SettingsCard(
     onSelectionRingColorChange: (Int) -> Unit,
     onNavigateToPinnedApps: () -> Unit,
 ) {
+    // @author bomo 模块开关 summary 不响应 isUpdating：提交瞬间若切换文案
+    // （如「正在写入框架配置」），行高变化会引发整个列表上下跳动。
     val moduleSummary =
         when {
-            state.isUpdating -> stringResource(R.string.module_enabled_summary_updating)
             !state.canChangeSettings && state.status != FrameworkConnectionStatus.Connected ->
                 stringResource(R.string.module_enabled_summary_waiting)
             state.missingScopes.isNotEmpty() -> stringResource(R.string.module_enabled_summary_scope)

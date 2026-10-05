@@ -620,33 +620,12 @@ internal class ColorOsFreeformCoordinator(
         morePanelActive = true
         activeEnvironmentApproved = false
         gestureEngine.cancel()
-        if (!sidebar.open(
-                // @author bomo 用手势真实方位决定面板锚向：原厂 mIsLeft 在自建面板路径下恒为默认值，
-                // 会导致右侧呼出也贴左。
-                leftSide = view.invokedSide == io.github.mangi.flymefreeform.gesture.CornerSide.Left,
-                beforeOpen = {
-                    if (overlay === view && lastSettings.enabled && isGestureEnvironmentAllowed()) {
-                        view.retainBackdropForPanel()
-                        true
-                    } else false
-                },
-                onResult = { result ->
-                    if (overlay === view) {
-                        if (result == ColorOsSidebarClient.Outcome.Fallback && lastSettings.enabled && isGestureEnvironmentAllowed() &&
-                            context.getSystemService(android.os.UserManager::class.java)?.isUserForeground == true
-                        ) {
-                            view.visibility = android.view.View.VISIBLE
-                            showBuiltInMorePanel(view)
-                        } else if (result != ColorOsSidebarClient.Outcome.Shown) removeOverlay()
-                    }
-                },
-                onExitStarted = { if (overlay === view) view.beginBackdropExit() },
-                onHideBackdrop = { hidden ->
-                    if (overlay === view) view.hideBackdropAfterFrame(hidden) else hidden()
-                },
-                onClosed = { if (overlay === view) removeOverlay() },
-            )
-        ) removeOverlay()
+        // @author bomo 「更多」直接打开自建应用面板（含按首字母索引的应用选择），
+        // 不再转发给 ColorOS 原厂智能侧边栏（系统界面无法加 A-Z 索引）。
+        if (overlay === view && lastSettings.enabled && isGestureEnvironmentAllowed()) {
+            view.retainBackdropForPanel()
+        }
+        showBuiltInMorePanel(view)
     }
 
     private fun showBuiltInMorePanel(view: CornerRadialOverlayView) {

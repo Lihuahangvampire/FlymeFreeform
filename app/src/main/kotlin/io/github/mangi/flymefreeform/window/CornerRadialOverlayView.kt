@@ -15,31 +15,42 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
@@ -61,10 +72,17 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.AbstractComposeView
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -703,6 +721,32 @@ internal class CornerRadialOverlayView(
         val iconSize = with(density) { metrics.iconDiameter.toDp() }
         val labelGap = with(density) { (metrics.labelTopOffset - metrics.iconDiameter / 2f).toDp() }
         val labelSize = with(density) { metrics.labelTextSize.toSp() }
+        // @author bomo 按首字母分组的锚点：label 首字符（A-Z / #）→ 该字母组第一个应用下标。
+        val anchors: List<Pair<Char, Int>> = remember(catalog.panelApps) {
+            val firstByLetter = LinkedHashMap<Char, Int>()
+            catalog.panelApps.forEachIndexed { index, entry ->
+                val initial = initialOf(entry.label)
+                if (!firstByLetter.containsKey(initial)) firstByLetter[initial] = index
+            }
+            firstByLetter.entries
+                .sortedWith(
+                    Comparator { first, second ->
+                        val firstHash = first.key == '#'
+                        val secondHash = second.key == '#'
+                        when {
+                            firstHash && !secondHash -> 1
+                            secondHash && !firstHash -> -1
+                            else -> first.key.compareTo(second.key)
+                        }
+                    },
+                )
+                .map { entry -> entry.key to entry.value }
+        }
+        val letters = anchors.map { it.first }
+        val targets = anchors.map { it.second }
+        val gridState = rememberLazyGridState()
+        val scope = rememberCoroutineScope()
+        var activeLetter by remember { mutableStateOf<Char?>(null) }
 
         Box(
             modifier =
@@ -746,10 +790,13 @@ internal class CornerRadialOverlayView(
                                     PANEL_CONTENT_TRANSLATION_FRACTION
                             compositingStrategy = CompositingStrategy.ModulateAlpha
                         },
+                state = gridState,
                 contentPadding =
                     PaddingValues(
-                        horizontal = horizontalPadding,
-                        vertical = verticalPadding,
+                        start = horizontalPadding,
+                        top = verticalPadding,
+                        end = horizontalPadding + PANEL_INDEX_BAR_WIDTH,
+                        bottom = verticalPadding,
                     ),
                 verticalArrangement = Arrangement.Top,
                 userScrollEnabled = inputEnabled,
@@ -790,6 +837,105 @@ internal class CornerRadialOverlayView(
                     }
                 }
             }
+            if (letters.size > 1) {
+                BoxWithConstraints(
+                    modifier =
+                        Modifier
+                            .align(Alignment.CenterEnd)
+                            .fillMaxHeight()
+                            .width(PANEL_INDEX_BAR_WIDTH),
+                ) {
+                    val barHeight = constraints.maxHeight.toFloat()
+                    val textMeasurer = rememberTextMeasurer()
+                    val primaryColor = MiuixTheme.colorScheme.primary
+                    val layouts: List<TextLayoutResult> =
+                        remember(letters, activeLetter, primaryColor, labelColor) {
+                            letters.map { letter ->
+                                textMeasurer.measure(
+                                    AnnotatedString(letter.toString()),
+                                    style =
+                                        TextStyle(
+                                            color =
+                                                if (letter == activeLetter) {
+                                                    primaryColor
+                                                } else {
+                                                    labelColor.copy(alpha = 0.65f)
+                                                },
+                                            fontSize = 10.sp,
+                                            fontWeight =
+                                                if (letter == activeLetter) FontWeight.SemiBold
+                                                else FontWeight.Medium,
+                                        ),
+                                )
+                            }
+                        }
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .padding(
+                                    end = 2.dp,
+                                    top = verticalPadding,
+                                    bottom = verticalPadding,
+                                )
+                                .pointerInput(letters) {
+                                    if (!inputEnabled) return@pointerInput
+                                    fun selectAt(y: Float) {
+                                        val index =
+                                            ((y / barHeight) * letters.size).toInt().coerceIn(0, letters.size - 1)
+                                        val letter = letters[index]
+                                        if (letter != activeLetter) {
+                                            activeLetter = letter
+                                            scope.launch { gridState.scrollToItem(targets[index]) }
+                                        }
+                                    }
+                                    detectDragGestures(
+                                        onDragStart = { offset -> selectAt(offset.y) },
+                                        onDrag = { change, _ ->
+                                            change.consume()
+                                            selectAt(change.position.y)
+                                        },
+                                    )
+                                }
+                                .pointerInput(letters) {
+                                    if (!inputEnabled) return@pointerInput
+                                    detectTapGestures { offset ->
+                                        val index =
+                                            ((offset.y / barHeight) * letters.size).toInt().coerceIn(0, letters.size - 1)
+                                        val letter = letters[index]
+                                        if (letter != activeLetter) {
+                                            activeLetter = letter
+                                            scope.launch { gridState.scrollToItem(targets[index]) }
+                                        }
+                                    }
+                                },
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            layouts.forEachIndexed { index, layout ->
+                                val centerY = barHeight * (index + 0.5f) / layouts.size
+                                drawText(
+                                    textLayoutResult = layout,
+                                    topLeft =
+                                        Offset(
+                                            (size.width - layout.size.width) / 2f,
+                                            centerY - layout.size.height / 2f,
+                                        ),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** @author bomo 应用 label 首字符：ASCII 字母取大写，其余（中文等）归入 '#'。 */
+    private fun initialOf(label: String): Char {
+        val code = label.firstOrNull()?.code ?: return '#'
+        return when (code) {
+            in 'A'.code..'Z'.code -> code.toChar()
+            in 'a'.code..'z'.code -> (code - 32).toChar()
+            else -> '#'
         }
     }
 
@@ -1190,6 +1336,8 @@ internal class CornerRadialOverlayView(
         const val SELECTION_RING_ENLARGE_SCALE = 1.3f
         /** @author bomo 「更多」宫格格心间距系数（<1 = 四格更紧凑；1 = 铺满圆盘）。 */
         const val MORE_GRID_COMPACT_FRACTION = 0.72f
+        /** @author bomo 「更多」面板右侧 A-Z 首字母索引条宽度。 */
+        val PANEL_INDEX_BAR_WIDTH = 22.dp
         /** @author bomo 系统强调蓝解析失败时的回退色（ColorOS 风格蓝）。 */
         val FALLBACK_SELECTION_RING_COLOR = Color(0xFF0A84FF)
         /** @author bomo 扇形半径缩放系数的钳制区间（对应设置百分比 60% ~ 150%）。 */
