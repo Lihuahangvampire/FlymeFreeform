@@ -3,6 +3,7 @@ package io.github.mangi.flymefreeform.window
 import io.github.mangi.flymefreeform.gesture.CornerSide
 import io.github.mangi.flymefreeform.gesture.RadialGeometry
 import kotlin.math.hypot
+import kotlin.math.sin
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -49,6 +50,21 @@ class RadialIconGeometryTest {
         }
         // 同一像素窗口改变系统显示大小，屏幕占比保持一致。
         assertEquals(fit(density = 1f), fit(density = 2f))
+    }
+
+    /** @author bomo 切换跟手回归：keepRadius（1.0×直径）恒小于相邻槽位弦长，
+     *  手指滑到目标图标中心时距原选中已超 keep、必然切换（旧 1.25× 会粘滞到滑过目标）。 */
+    @Test
+    fun keepRadiusAlwaysBelowAdjacentChord() {
+        for (count in 1..maxSlots) {
+            val metrics = fit(count = count)
+            val stepRadians = 84f / count * kotlin.math.PI.toFloat() / 180f
+            val chord = 2f * metrics.radius * sin(stepRadians / 2f)
+            assertTrue(
+                "keep=${metrics.selectionKeepRadius} chord=$chord count=$count",
+                metrics.selectionKeepRadius < chord,
+            )
+        }
     }
 
     @Test
@@ -104,7 +120,8 @@ class RadialIconGeometryTest {
         assertTrue(narrow.radius < full.radius)
         assertEquals(236f / 47.5f, narrow.radius / narrow.iconDiameter, 0.001f)
         assertEquals(0.9f, narrow.selectionEnterRadius / narrow.iconDiameter, 0.001f)
-        assertEquals(1.25f, narrow.selectionKeepRadius / narrow.iconDiameter, 0.001f)
+        // @author bomo keep = 图标直径（1.0×）—— 跟手切换且保留防抖/跨圈裕度。
+        assertEquals(1.0f, narrow.selectionKeepRadius / narrow.iconDiameter, 0.001f)
         for (count in 1..7) assertEquals(narrow, fit(insets = insets, count = count))
     }
 

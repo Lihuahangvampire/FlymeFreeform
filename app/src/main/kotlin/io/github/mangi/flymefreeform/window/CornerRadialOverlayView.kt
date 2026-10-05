@@ -510,13 +510,21 @@ internal class CornerRadialOverlayView(
             val centerY = layout.origin.y + (destination.y - layout.origin.y) * motion.radialProgress
             val scale = motion.iconScale * contentScale
             val ringProgress = itemRings.getOrNull(index)?.value ?: 0f
+            // @author bomo 选中项图标随蓝圈同步放大：同一 ringProgress（130ms 选中动画）驱动，
+            // 图标从原尺寸扩到 1.3 倍，圈始终包在放大后的图标外缘，形成「图标+圈一起长大」。
+            val iconEnlarge =
+                if (selectedIndexState.intValue == index) {
+                    1f + (SELECTION_RING_ENLARGE_SCALE - 1f) * ringProgress
+                } else {
+                    1f
+                }
             val target = slotTarget(index)
             val diameter =
                 (if (target != null && target >= outerApps().size) {
                     metrics.innerIconDiameter
                 } else {
                     metrics.iconDiameter
-                }) * scale
+                }) * scale * iconEnlarge
             rotate(motion.rotationDegrees, pivot = Offset(centerX, centerY)) {
                 if (target == null) {
                     drawMoreItem(centerX, centerY, diameter, contentAlpha)

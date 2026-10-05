@@ -97,7 +97,12 @@ internal object RadialIconGeometry {
             plateDiameter = diameter,
             iconDiameter = diameter,
             selectionEnterRadius = diameter * 0.9f * radiusScale,
-            selectionKeepRadius = diameter * 1.25f * radiusScale,
+            // @author bomo keep = 图标直径（2×图标半径）而非 1.25×：
+            // 相邻槽位弦长 ≈ 1.03×直径，旧值让手指滑到目标图标中心仍粘在原选中
+            // （1.25d > 1.03d），直到滑过目标才切换 —— 用户实测「反应慢、有偏差」。
+            // 1.0d 下手指到达目标中心即切换、跟手；仍大于半弦长（≈0.52d）保留防抖，
+            // 且小于内外圈中心距（≈1.38d）跨圈切换不受影响。
+            selectionKeepRadius = diameter * 1.0f * radiusScale,
             itemPadding = BASE_ITEM_PADDING_DP * unit,
             pixelsPerBaseDp = unit,
             innerRadius = innerRadius,
