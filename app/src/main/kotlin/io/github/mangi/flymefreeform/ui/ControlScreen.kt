@@ -1,13 +1,16 @@
 package io.github.mangi.flymefreeform.ui
 
+import android.graphics.Color as AndroidColor
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -17,6 +20,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,10 +28,12 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Category
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.ColorLens
 import androidx.compose.material.icons.rounded.Dashboard
@@ -63,6 +69,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
@@ -586,8 +593,9 @@ private fun SettingsCard(
 }
 
 /**
- * @author bomo 扇形选中圈颜色选择：首项「跟随系统」（渐变蓝，动态取系统强调蓝），
- * 其余为 [ModulePreferences.SELECTION_RING_COLOR_PRESETS] 预设色。
+ * @author bomo 扇形选中圈颜色选择：点击行右侧色块展开 HSV 颜色选择器
+ * （色相条 + 饱和度 / 亮度平面），拖动或点按即选色并写入远端配置；
+ * 展开区内提供「跟随系统」选项恢复动态取系统强调蓝。
  */
 @Composable
 private fun SelectionColorPreference(
@@ -595,49 +603,263 @@ private fun SelectionColorPreference(
     enabled: Boolean,
     onColorChange: (Int) -> Unit,
 ) {
-    val options =
-        listOf(ModulePreferences.SELECTION_RING_COLOR_SYSTEM) +
-            ModulePreferences.SELECTION_RING_COLOR_PRESETS
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    var isDragging by remember { mutableStateOf(false) }
+    val baseArgb =
+        if (selectedArgb == ModulePreferences.SELECTION_RING_COLOR_SYSTEM) {
+            0xFF0A84FF.toInt()
+        } else {
+            selectedArgb
+        }
+    var draftHue by remember { mutableFloatStateOf(0f) }
+    var draftSaturation by remember { mutableFloatStateOf(0f) }
+    var draftValue by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(baseArgb) {
+        if (!isDragging) {
+            val hsv = FloatArray(3)
+            AndroidColor.colorToHSV(baseArgb, hsv)
+            draftHue = hsv[0]
+            draftSaturation = hsv[1]
+            draftValue = hsv[2]
+        }
+    }
+    val currentSwatchBrush =
+        if (selectedArgb == ModulePreferences.SELECTION_RING_COLOR_SYSTEM) {
+            Brush.linearGradient(listOf(Color(0xFF0A84FF), Color(0xFF6FD0FF)))
+        } else {
+            null
+        }
     BasicComponent(
         title = stringResource(R.string.selection_ring_color_title),
         summary = stringResource(R.string.selection_ring_color_summary),
         startAction = { PreferenceIcon(Icons.Rounded.ColorLens, enabled) },
         endActions = {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                options.forEach { argb ->
-                    val selected = argb == selectedArgb
-                    val swatch =
-                        if (argb == ModulePreferences.SELECTION_RING_COLOR_SYSTEM) {
-                            Modifier.background(
+                if (selectedArgb == ModulePreferences.SELECTION_RING_COLOR_SYSTEM) {
+                    Text(
+                        text = stringResource(R.string.selection_ring_color_system),
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        style = MiuixTheme.textStyles.body2,
+                    )
+                }
+                Box(
+                    modifier =
+                        Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .then(
+                                if (currentSwatchBrush != null) {
+                                    Modifier.background(currentSwatchBrush)
+                                } else {
+                                    Modifier.background(Color(selectedArgb))
+                                },
+                            )
+                            .border(1.dp, Color(0x33000000), CircleShape)
+                            .clickable(enabled = enabled) { expanded = !expanded },
+                )
+            }
+        },
+    )
+    if (expanded) {
+        HsvColorPicker(
+            hue = draftHue,
+            saturation = draftSaturation,
+            value = draftValue,
+            enabled = enabled,
+            onHueChange = { h ->
+                draftHue = h
+                isDragging = true
+            },
+            onSvChange = { s, v ->
+                draftSaturation = s
+                draftValue = v
+                isDragging = true
+            },
+            onDragEnd = {
+                isDragging = false
+                onColorChange(
+                    AndroidColor.HSVToColor(floatArrayOf(draftHue, draftSaturation, draftValue)),
+                )
+            },
+        )
+        BasicComponent(
+            title = stringResource(R.string.selection_ring_color_system),
+            summary = stringResource(R.string.selection_ring_color_system_summary),
+            startAction = {
+                Box(
+                    modifier =
+                        Modifier
+                            .padding(end = 6.dp)
+                            .size(20.dp)
+                            .clip(CircleShape)
+                            .background(
                                 Brush.linearGradient(
                                     listOf(Color(0xFF0A84FF), Color(0xFF6FD0FF)),
                                 ),
                             )
-                        } else {
-                            Modifier.background(Color(argb))
-                        }
-                    Box(
-                        modifier =
-                            Modifier
-                                .size(22.dp)
-                                .clip(CircleShape)
-                                .then(swatch)
-                                .border(
-                                    width = if (selected) 2.dp else 1.dp,
-                                    color =
-                                        if (selected) MiuixTheme.colorScheme.primary
-                                        else Color(0x33000000),
-                                    shape = CircleShape,
-                                )
-                                .clickable(enabled = enabled) { onColorChange(argb) },
+                            .clickable(enabled = enabled) {
+                                onColorChange(ModulePreferences.SELECTION_RING_COLOR_SYSTEM)
+                                expanded = false
+                            },
+                )
+            },
+            endActions = {
+                if (selectedArgb == ModulePreferences.SELECTION_RING_COLOR_SYSTEM) {
+                    Icon(
+                        imageVector = Icons.Rounded.Check,
+                        contentDescription = null,
+                        tint = MiuixTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
                     )
                 }
-            }
-        },
+            },
+        )
+    }
+}
+
+/** @author bomo HSV 色相条渐变端点（红→黄→绿→青→蓝→品红→红）。 */
+private val HUE_GRADIENT_COLORS =
+    listOf(
+        Color(0xFFFF0000),
+        Color(0xFFFFFF00),
+        Color(0xFF00FF00),
+        Color(0xFF00FFFF),
+        Color(0xFF0000FF),
+        Color(0xFFFF00FF),
+        Color(0xFFFF0000),
     )
+
+/**
+ * @author bomo 自由选色器：上部饱和度 / 亮度平面（x = 饱和度，y = 亮度），
+ * 下部色相条；拖动 / 点按更新，松手经 [onDragEnd] 提交。
+ */
+@Composable
+private fun HsvColorPicker(
+    hue: Float,
+    saturation: Float,
+    value: Float,
+    enabled: Boolean,
+    onHueChange: (Float) -> Unit,
+    onSvChange: (Float, Float) -> Unit,
+    onDragEnd: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        BoxWithConstraints(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(150.dp)
+                    .clip(RoundedCornerShape(10.dp)),
+        ) {
+            val planeWidth = constraints.maxWidth.toFloat()
+            val planeHeight = constraints.maxHeight.toFloat()
+            Canvas(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .pointerInput(enabled) {
+                            if (!enabled) return@pointerInput
+                            detectDragGestures(
+                                onDragStart = { offset ->
+                                    onSvChange(
+                                        (offset.x / planeWidth).coerceIn(0f, 1f),
+                                        (1f - offset.y / planeHeight).coerceIn(0f, 1f),
+                                    )
+                                },
+                                onDrag = { change, _ ->
+                                    change.consume()
+                                    onSvChange(
+                                        (change.position.x / planeWidth).coerceIn(0f, 1f),
+                                        (1f - change.position.y / planeHeight).coerceIn(0f, 1f),
+                                    )
+                                },
+                                onDragEnd = { onDragEnd() },
+                                onDragCancel = { onDragEnd() },
+                            )
+                        },
+            ) {
+                val hueColor =
+                    Color(AndroidColor.HSVToColor(floatArrayOf(hue.coerceIn(0f, 360f), 1f, 1f)))
+                drawRect(
+                    brush =
+                        Brush.linearGradient(
+                            listOf(Color.White, hueColor),
+                            start = Offset.Zero,
+                            end = Offset(planeWidth, 0f),
+                        ),
+                )
+                drawRect(
+                    brush =
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black),
+                            startY = 0f,
+                            endY = planeHeight,
+                        ),
+                )
+                val indicatorX = saturation.coerceIn(0f, 1f) * planeWidth
+                val indicatorY = (1f - value.coerceIn(0f, 1f)) * planeHeight
+                drawCircle(
+                    color = Color.White,
+                    radius = 8f,
+                    center = Offset(indicatorX, indicatorY),
+                    style = Stroke(width = 2.5f),
+                )
+                drawCircle(
+                    color = Color.Black.copy(alpha = 0.5f),
+                    radius = 8f,
+                    center = Offset(indicatorX, indicatorY),
+                    style = Stroke(width = 1f),
+                )
+            }
+        }
+        BoxWithConstraints(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(22.dp)
+                    .padding(top = 10.dp)
+                    .clip(RoundedCornerShape(6.dp)),
+        ) {
+            val barWidth = constraints.maxWidth.toFloat()
+            Canvas(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .pointerInput(enabled) {
+                            if (!enabled) return@pointerInput
+                            detectDragGestures(
+                                onDragStart = { offset ->
+                                    onHueChange((offset.x / barWidth * 360f).coerceIn(0f, 360f))
+                                },
+                                onDrag = { change, _ ->
+                                    change.consume()
+                                    onHueChange((change.position.x / barWidth * 360f).coerceIn(0f, 360f))
+                                },
+                                onDragEnd = { onDragEnd() },
+                                onDragCancel = { onDragEnd() },
+                            )
+                        },
+            ) {
+                drawRect(brush = Brush.horizontalGradient(HUE_GRADIENT_COLORS))
+                val indicatorX = (hue.coerceIn(0f, 360f) / 360f) * barWidth
+                drawCircle(
+                    color = Color.White,
+                    radius = 7f,
+                    center = Offset(indicatorX, size.height / 2f),
+                    style = Stroke(width = 2.5f),
+                )
+                drawCircle(
+                    color = Color.Black.copy(alpha = 0.5f),
+                    radius = 7f,
+                    center = Offset(indicatorX, size.height / 2f),
+                    style = Stroke(width = 1f),
+                )
+            }
+        }
+    }
 }
 
 /**

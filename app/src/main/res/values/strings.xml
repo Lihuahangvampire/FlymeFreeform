@@ -57,6 +57,7 @@
     <string name="selection_ring_color_title">选中圈颜色</string>
     <string name="selection_ring_color_summary">选中应用的圈颜色；调整后下次呼出生效</string>
     <string name="selection_ring_color_system">跟随系统</string>
+    <string name="selection_ring_color_system_summary">动态取系统强调蓝，适配深浅色模式</string>
     <string name="radial_apps_title">扇形应用</string>
     <string name="radial_apps_recent_summary">首次使用时自动显示最近使用的六个应用</string>
     <string name="radial_apps_empty_summary">未固定应用，扇形中只显示“更多”</string>

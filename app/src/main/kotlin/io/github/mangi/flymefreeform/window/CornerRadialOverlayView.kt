@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -572,8 +573,8 @@ internal class CornerRadialOverlayView(
     }
 
     /**
-     * @author bomo 「更多」图标：2×2 宫格，三格为空心方块、一格为放大镜（参考图样式），
-     * 替代原「三个点」。线条用深灰，与圆盘背景同款对比。
+     * @author bomo 「更多」图标：2×2 宫格，三格为圆角空心方块、一格为放大镜（参考图样式）。
+     * 格心间距 0.82× 格子（紧凑），方块圆角、描边加粗，替代原「三个点」。
      */
     private fun DrawScope.drawMoreItem(
         centerX: Float,
@@ -588,11 +589,12 @@ internal class CornerRadialOverlayView(
             alpha = alpha * PLATE_ALPHA,
         )
         val lineColor = Color(0xFF37373C)
-        val unit = diameter / 2f // 宫格格子边长（半格到格心距离）
+        val unit = diameter / 2f // 半格（格心到边缘的距离基准）
+        val compact = MORE_GRID_COMPACT_FRACTION // 格心间距系数：<1 让四格更紧凑
         for (row in 0..1) {
             for (col in 0..1) {
-                val cx = centerX + (col - 0.5f) * unit
-                val cy = centerY + (row - 0.5f) * unit
+                val cx = centerX + (col - 0.5f) * unit * compact
+                val cy = centerY + (row - 0.5f) * unit * compact
                 if (row == 1 && col == 1) {
                     drawMagnifierGlyph(cx, cy, unit, lineColor, alpha)
                 } else {
@@ -602,7 +604,7 @@ internal class CornerRadialOverlayView(
         }
     }
 
-    /** 空心方块（宫格图标）：边长为格子的 46%，描边宽度为格子的 8%。 */
+    /** 圆角空心方块（宫格图标）：边长为格子的 46%，圆角为边长的 24%，描边加粗为格子的 11%。 */
     private fun DrawScope.drawSquareGlyph(
         cx: Float,
         cy: Float,
@@ -611,16 +613,17 @@ internal class CornerRadialOverlayView(
         alpha: Float,
     ) {
         val side = unit * 0.46f
-        drawRect(
+        drawRoundRect(
             color = color,
             topLeft = Offset(cx - side / 2f, cy - side / 2f),
             size = Size(side, side),
+            cornerRadius = CornerRadius(side * 0.24f),
             alpha = alpha,
-            style = Stroke(width = unit * 0.08f),
+            style = Stroke(width = unit * 0.11f),
         )
     }
 
-    /** 放大镜：镜片偏左上、手柄向右下 45°，与参考图一致。 */
+    /** 放大镜：镜片偏左上、手柄向右下 45°，与参考图一致；描边与方块同粗。 */
     private fun DrawScope.drawMagnifierGlyph(
         cx: Float,
         cy: Float,
@@ -628,14 +631,14 @@ internal class CornerRadialOverlayView(
         color: Color,
         alpha: Float,
     ) {
-        val lensR = unit * 0.17f
+        val lensR = unit * 0.19f
         val lensCenter = Offset(cx - unit * 0.10f, cy - unit * 0.10f)
         drawCircle(
             color = color,
             radius = lensR,
             center = lensCenter,
             alpha = alpha,
-            style = Stroke(width = unit * 0.09f),
+            style = Stroke(width = unit * 0.11f),
         )
         val handleStart =
             Offset(lensCenter.x + lensR * 0.72f, lensCenter.y + lensR * 0.72f)
@@ -644,7 +647,7 @@ internal class CornerRadialOverlayView(
             color = color,
             start = handleStart,
             end = handleEnd,
-            strokeWidth = unit * 0.10f,
+            strokeWidth = unit * 0.12f,
             alpha = alpha,
         )
     }
@@ -1185,6 +1188,8 @@ internal class CornerRadialOverlayView(
         const val DISMISS_FALLBACK_GRACE_MS = 260L
         /** @author bomo 选中项的放大尺度（1.3 = 放大 30%）：图标与紧贴它的选中圈同步放大。 */
         const val SELECTION_RING_ENLARGE_SCALE = 1.3f
+        /** @author bomo 「更多」宫格格心间距系数（<1 = 四格更紧凑；1 = 铺满圆盘）。 */
+        const val MORE_GRID_COMPACT_FRACTION = 0.82f
         /** @author bomo 系统强调蓝解析失败时的回退色（ColorOS 风格蓝）。 */
         val FALLBACK_SELECTION_RING_COLOR = Color(0xFF0A84FF)
         /** @author bomo 扇形半径缩放系数的钳制区间（对应设置百分比 60% ~ 150%）。 */
