@@ -52,7 +52,7 @@ class RadialIconGeometryTest {
         assertEquals(fit(density = 1f), fit(density = 2f))
     }
 
-    /** @author bomo 切换跟手回归：keepRadius（1.0×直径）恒小于相邻槽位弦长，
+    /** @author bomo 切换跟手回归：keepRadius（0.9×直径）恒小于相邻槽位弦长，
      *  手指滑到目标图标中心时距原选中已超 keep、必然切换（旧 1.25× 会粘滞到滑过目标）。 */
     @Test
     fun keepRadiusAlwaysBelowAdjacentChord() {
@@ -120,8 +120,8 @@ class RadialIconGeometryTest {
         assertTrue(narrow.radius < full.radius)
         assertEquals(236f / 47.5f, narrow.radius / narrow.iconDiameter, 0.001f)
         assertEquals(0.9f, narrow.selectionEnterRadius / narrow.iconDiameter, 0.001f)
-        // @author bomo keep = 图标直径（1.0×）—— 跟手切换且保留防抖/跨圈裕度。
-        assertEquals(1.0f, narrow.selectionKeepRadius / narrow.iconDiameter, 0.001f)
+        // @author bomo keep = 0.9× 图标直径 —— 跟手切换（= enter，更灵敏）且保留防抖/跨圈裕度。
+        assertEquals(0.9f, narrow.selectionKeepRadius / narrow.iconDiameter, 0.001f)
         for (count in 1..7) assertEquals(narrow, fit(insets = insets, count = count))
     }
 

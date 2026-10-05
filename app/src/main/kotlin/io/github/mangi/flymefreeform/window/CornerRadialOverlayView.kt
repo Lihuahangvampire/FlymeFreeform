@@ -535,14 +535,15 @@ internal class CornerRadialOverlayView(
                 }
                 val strokeWidth = metrics.selectionRingMaxWidth * scale * ringProgress
                 if (strokeWidth > 0f) {
-                    // @author bomo 选中圈：系统蓝 + 比图标放大 30%（SELECTION_RING_ENLARGE_SCALE），
-                    // 半径与描边同由 ringProgress（130ms 选中动画）驱动：
-                    // 半径从图标边缘扩散到 1.3 倍、描边从 0 变粗，形成「扩大」动效。
-                    val baseRadius = diameter / 2f
-                    val ringOuter =
-                        baseRadius +
-                            (baseRadius * SELECTION_RING_ENLARGE_SCALE + strokeWidth / 2f - baseRadius) *
-                            ringProgress
+                    // @author bomo 选中圈：内径全程连接图标外径，描边完全落在图标外侧。
+                    // 修复：旧实现把已含 iconEnlarge 的直径再乘一次 SELECTION_RING_ENLARGE_SCALE
+                    // （双重放大），p=1 时圈内缘落在 1.69× 图标半径处，与图标外径（1.3×）
+                    // 之间留约 9dp 缝隙。现改为 innerEdge = 图标当前外径（随放大动画同步），
+                    // 描边中心 = innerEdge + strokeWidth/2，圈始终紧贴放大后的图标。
+                    val iconRadius = diameter / 2f
+                    val restRadius = iconRadius / iconEnlarge
+                    val innerEdge = restRadius + (iconRadius - restRadius) * ringProgress
+                    val ringOuter = innerEdge + strokeWidth / 2f
                     drawCircle(
                         color = selectionRingColor,
                         radius = ringOuter,
@@ -1110,7 +1111,7 @@ internal class CornerRadialOverlayView(
         const val GESTURE_TIMEOUT_MS = 5_000L
         const val PANEL_TIMEOUT_MS = 15_000L
         const val DISMISS_FALLBACK_GRACE_MS = 260L
-        /** @author bomo 选中圈相对图标直径的放大系数（1.3 = 放大 30%）。 */
+        /** @author bomo 选中项的放大尺度（1.3 = 放大 30%）：图标与紧贴它的选中圈同步放大。 */
         const val SELECTION_RING_ENLARGE_SCALE = 1.3f
         /** @author bomo 系统强调蓝解析失败时的回退色（ColorOS 风格蓝）。 */
         val FALLBACK_SELECTION_RING_COLOR = Color(0xFF0A84FF)
