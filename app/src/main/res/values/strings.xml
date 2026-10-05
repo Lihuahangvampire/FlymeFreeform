@@ -52,6 +52,11 @@
     <string name="panel_scale_summary">「全部」面板的大小；调整后重启手机生效</string>
     <string name="radial_radius_title">扇形半径</string>
     <string name="radial_radius_summary">扇形外圈与内圈同心缩放；调整后下次呼出生效</string>
+    <string name="selection_ring_width_title">选中圈厚度</string>
+    <string name="selection_ring_width_summary">选中应用的圈描边粗细；调整后下次呼出生效</string>
+    <string name="selection_ring_color_title">选中圈颜色</string>
+    <string name="selection_ring_color_summary">选中应用的圈颜色；调整后下次呼出生效</string>
+    <string name="selection_ring_color_system">跟随系统</string>
     <string name="radial_apps_title">扇形应用</string>
     <string name="radial_apps_recent_summary">首次使用时自动显示最近使用的六个应用</string>
     <string name="radial_apps_empty_summary">未固定应用，扇形中只显示“更多”</string>

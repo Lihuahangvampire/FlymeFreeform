@@ -121,6 +121,19 @@ internal class FrameworkConnectionRepository(
             )
         }
 
+    /** @author bomo 设置扇形选中圈描边厚度缩放百分比（50 ~ 250）。 */
+    fun setSelectionRingWidthPercent(percent: Int) =
+        updateSettings {
+            it.copy(
+                selectionRingWidthPercent =
+                    ModulePreferences.coerceSelectionRingWidthPercent(percent),
+            )
+        }
+
+    /** @author bomo 设置扇形选中圈颜色 ARGB（[ModulePreferences.SELECTION_RING_COLOR_SYSTEM] = 跟随系统）。 */
+    fun setSelectionRingColorArgb(argb: Int) =
+        updateSettings { it.copy(selectionRingColorArgb = argb) }
+
     fun setOutsideTapCloseMode(mode: OutsideTapCloseMode) =
         updateSettings { it.copy(outsideTapCloseMode = mode) }
 

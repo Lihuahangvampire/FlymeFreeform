@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.FilterQuality
@@ -72,6 +73,7 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import io.github.mangi.flymefreeform.config.ModulePreferences
 import io.github.mangi.flymefreeform.gesture.CornerSide
 import io.github.mangi.flymefreeform.gesture.RadialGeometry
 import io.github.mangi.flymefreeform.gesture.RadialLayout
@@ -138,6 +140,10 @@ internal class CornerRadialOverlayView(
     private var dismissNotified = false
     private var disposed = false
     private var radialRadiusScale = 1f
+    /** @author bomo 选中圈描边厚度缩放系数（0.5 ~ 2.5），来自设置「选中圈厚度」。 */
+    private var selectionRingWidthScale = 1f
+    /** @author bomo 选中圈颜色 ARGB；[ModulePreferences.SELECTION_RING_COLOR_SYSTEM] = 跟随系统。 */
+    private var selectionRingColorArgb = ModulePreferences.SELECTION_RING_COLOR_SYSTEM
     private var lastTickUptime = 0L
     private val timeout = Runnable(::requestDismiss)
     private val dismissFallback = Runnable(::completeRadialExit)
@@ -172,11 +178,18 @@ internal class CornerRadialOverlayView(
         y: Float,
         /** @author bomo 扇形外圈 / 内圈半径缩放系数（1 = 原尺寸），来自设置「扇形半径」。 */
         radiusScale: Float = 1f,
+        /** @author bomo 选中圈描边厚度缩放系数（1 = 默认），来自设置「选中圈厚度」。 */
+        selectionRingWidthScale: Float = 1f,
+        /** @author bomo 选中圈颜色 ARGB；[ModulePreferences.SELECTION_RING_COLOR_SYSTEM] = 跟随系统。 */
+        selectionRingColorArgb: Int = ModulePreferences.SELECTION_RING_COLOR_SYSTEM,
     ) {
         check(!isAttachedToWindow) { "Overlay must be initialized before it is attached" }
         this.side = side
         this.catalog = catalog
         radialRadiusScale = radiusScale.coerceIn(RADIAL_RADIUS_SCALE_MIN, RADIAL_RADIUS_SCALE_MAX)
+        this.selectionRingWidthScale =
+            selectionRingWidthScale.coerceIn(SELECTION_RING_WIDTH_SCALE_MIN, SELECTION_RING_WIDTH_SCALE_MAX)
+        this.selectionRingColorArgb = selectionRingColorArgb
         latestX = x
         latestY = y
         radialImages.value = catalog.radialApps.map { entry -> entry.icon.asImageBitmap() }
@@ -434,8 +447,8 @@ internal class CornerRadialOverlayView(
         itemRings: List<Animatable<Float, *>>,
         animationsEnabled: Boolean,
     ) {
-        // @author bomo 选中圈用系统强调蓝（ColorOS 动态取色），解析失败回退默认蓝。
-        val selectionRingColor = remember { resolveSelectionRingColor() }
+        // @author bomo 选中圈颜色：设置「选中圈颜色」（跟随系统 = 动态取系统强调蓝，失败回退默认蓝）。
+        val selectionRingColor = remember(selectionRingColorArgb) { resolveSelectionRingColor() }
         androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
             if (backdropOnlyState.value) {
                 drawRect(Color.Black, alpha = OverlayBackdrop.MAX_ALPHA * backdropAlpha.floatValue)
@@ -533,7 +546,9 @@ internal class CornerRadialOverlayView(
                         drawSystemImage(image, centerX, centerY, diameter, contentAlpha)
                     }
                 }
-                val strokeWidth = metrics.selectionRingMaxWidth * scale * ringProgress
+                // @author bomo 描边宽度 = 默认基准（图标直径 6.8%）× 设置「选中圈厚度」缩放 × 选中动画。
+                val strokeWidth =
+                    metrics.selectionRingMaxWidth * selectionRingWidthScale * scale * ringProgress
                 if (strokeWidth > 0f) {
                     // @author bomo 选中圈：内径全程连接图标外径，描边完全落在图标外侧。
                     // 修复：旧实现把已含 iconEnlarge 的直径再乘一次 SELECTION_RING_ENLARGE_SCALE
@@ -556,6 +571,10 @@ internal class CornerRadialOverlayView(
         }
     }
 
+    /**
+     * @author bomo 「更多」图标：2×2 宫格，三格为空心方块、一格为放大镜（参考图样式），
+     * 替代原「三个点」。线条用深灰，与圆盘背景同款对比。
+     */
     private fun DrawScope.drawMoreItem(
         centerX: Float,
         centerY: Float,
@@ -568,15 +587,66 @@ internal class CornerRadialOverlayView(
             center = Offset(centerX, centerY),
             alpha = alpha * PLATE_ALPHA,
         )
-        val dotColor = Color(0xFF37373C)
-        for (offset in -1..1) {
-            drawCircle(
-                color = dotColor,
-                radius = diameter * MORE_DOT_RADIUS_FRACTION,
-                center = Offset(centerX + offset * diameter * MORE_DOT_SPACING_FRACTION, centerY),
-                alpha = alpha,
-            )
+        val lineColor = Color(0xFF37373C)
+        val unit = diameter / 2f // 宫格格子边长（半格到格心距离）
+        for (row in 0..1) {
+            for (col in 0..1) {
+                val cx = centerX + (col - 0.5f) * unit
+                val cy = centerY + (row - 0.5f) * unit
+                if (row == 1 && col == 1) {
+                    drawMagnifierGlyph(cx, cy, unit, lineColor, alpha)
+                } else {
+                    drawSquareGlyph(cx, cy, unit, lineColor, alpha)
+                }
+            }
         }
+    }
+
+    /** 空心方块（宫格图标）：边长为格子的 46%，描边宽度为格子的 8%。 */
+    private fun DrawScope.drawSquareGlyph(
+        cx: Float,
+        cy: Float,
+        unit: Float,
+        color: Color,
+        alpha: Float,
+    ) {
+        val side = unit * 0.46f
+        drawRect(
+            color = color,
+            topLeft = Offset(cx - side / 2f, cy - side / 2f),
+            size = Size(side, side),
+            alpha = alpha,
+            style = Stroke(width = unit * 0.08f),
+        )
+    }
+
+    /** 放大镜：镜片偏左上、手柄向右下 45°，与参考图一致。 */
+    private fun DrawScope.drawMagnifierGlyph(
+        cx: Float,
+        cy: Float,
+        unit: Float,
+        color: Color,
+        alpha: Float,
+    ) {
+        val lensR = unit * 0.17f
+        val lensCenter = Offset(cx - unit * 0.10f, cy - unit * 0.10f)
+        drawCircle(
+            color = color,
+            radius = lensR,
+            center = lensCenter,
+            alpha = alpha,
+            style = Stroke(width = unit * 0.09f),
+        )
+        val handleStart =
+            Offset(lensCenter.x + lensR * 0.72f, lensCenter.y + lensR * 0.72f)
+        val handleEnd = Offset(cx + unit * 0.20f, cy + unit * 0.20f)
+        drawLine(
+            color = color,
+            start = handleStart,
+            end = handleEnd,
+            strokeWidth = unit * 0.10f,
+            alpha = alpha,
+        )
     }
 
     private fun DrawScope.drawSystemImage(
@@ -1070,10 +1140,14 @@ internal class CornerRadialOverlayView(
         }
 
     /**
-     * @author bomo 选中圈颜色：优先取系统强调蓝（ColorOS 动态取色，`system_accent1_500`），
-     * 解析失败回退 [FALLBACK_SELECTION_RING_COLOR]。框架资源对所有进程可读，仅解析一次。
+     * @author bomo 选中圈颜色：设置「选中圈颜色」为具体 ARGB 时直接用；
+     * [ModulePreferences.SELECTION_RING_COLOR_SYSTEM]（跟随系统）时取系统强调蓝
+     * （ColorOS 动态取色，`system_accent1_500`），解析失败回退 [FALLBACK_SELECTION_RING_COLOR]。
+     * 框架资源对所有进程可读。
      */
     private fun resolveSelectionRingColor(): Color {
+        val configured = selectionRingColorArgb
+        if (configured != ModulePreferences.SELECTION_RING_COLOR_SYSTEM) return Color(configured)
         val resources = Resources.getSystem()
         val accentId = resources.getIdentifier("system_accent1_500", "color", "android")
         if (accentId != 0) {
@@ -1099,8 +1173,6 @@ internal class CornerRadialOverlayView(
         const val NO_SELECTION = -1
         const val PLATE_ALPHA = 235f / 255f
         const val PANEL_SURFACE_ALPHA = 253f / 255f
-        const val MORE_DOT_RADIUS_FRACTION = 0.052f
-        const val MORE_DOT_SPACING_FRACTION = 0.17f
         const val PANEL_EXPAND_DAMPING = 0.9f
         const val PANEL_EXPAND_RESPONSE_SECONDS = 0.3f
         const val PANEL_VISIBILITY_THRESHOLD = 0.0001f
@@ -1118,6 +1190,9 @@ internal class CornerRadialOverlayView(
         /** @author bomo 扇形半径缩放系数的钳制区间（对应设置百分比 60% ~ 150%）。 */
         const val RADIAL_RADIUS_SCALE_MIN = 0.6f
         const val RADIAL_RADIUS_SCALE_MAX = 1.5f
+        /** @author bomo 选中圈描边厚度缩放系数的钳制区间（对应设置百分比 50% ~ 250%）。 */
+        const val SELECTION_RING_WIDTH_SCALE_MIN = 0.5f
+        const val SELECTION_RING_WIDTH_SCALE_MAX = 2.5f
     }
 }
 

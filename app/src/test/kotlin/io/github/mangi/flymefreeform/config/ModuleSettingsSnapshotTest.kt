@@ -155,6 +155,48 @@ class ModuleSettingsSnapshotTest {
         assertEquals(60, ModulePreferences.coerceRadialRadiusPercent(10))
     }
 
+    /** @author bomo 选中圈厚度百分比：默认 100，写入回读一致，越界钳制（50 ~ 250）。 */
+    @Test
+    fun selectionRingWidthPercentDefaultsRoundTripsAndClamps() {
+        assertEquals(100, ModuleSettingsSnapshot().selectionRingWidthPercent)
+
+        val preferences = InMemoryPreferences()
+        ModuleSettingsSnapshot(selectionRingWidthPercent = 180).writeTo(preferences.edit()).commit()
+        assertEquals(
+            180,
+            preferences.getInt(ModulePreferences.KEY_SELECTION_RING_WIDTH_PERCENT, -1),
+        )
+        assertEquals(
+            180,
+            ModuleSettingsSnapshot.readFrom(preferences).selectionRingWidthPercent,
+        )
+
+        assertEquals(250, ModulePreferences.coerceSelectionRingWidthPercent(300))
+        assertEquals(50, ModulePreferences.coerceSelectionRingWidthPercent(10))
+    }
+
+    /** @author bomo 选中圈颜色：默认跟随系统（-2），写入回读一致；自定义 ARGB 原样保留。 */
+    @Test
+    fun selectionRingColorDefaultsRoundTrips() {
+        assertEquals(
+            ModulePreferences.SELECTION_RING_COLOR_SYSTEM,
+            ModuleSettingsSnapshot().selectionRingColorArgb,
+        )
+
+        val preferences = InMemoryPreferences()
+        ModuleSettingsSnapshot(selectionRingColorArgb = 0xFF34C759.toInt())
+            .writeTo(preferences.edit())
+            .commit()
+        assertEquals(
+            0xFF34C759.toInt(),
+            preferences.getInt(ModulePreferences.KEY_SELECTION_RING_COLOR, -1),
+        )
+        assertEquals(
+            0xFF34C759.toInt(),
+            ModuleSettingsSnapshot.readFrom(preferences).selectionRingColorArgb,
+        )
+    }
+
     /** @author bomo 面板缩放：读入越界脏值应钳到合法区间（滑条与远端配置都可能写入越界值）。 */
     @Test
     fun panelScaleIsClampedWhenRead() {

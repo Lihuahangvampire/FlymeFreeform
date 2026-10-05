@@ -18,6 +18,10 @@ internal data class ModuleSettingsSnapshot(
     val panelScalePercent: Int = ModulePreferences.DEFAULT_PANEL_SCALE_PERCENT,
     /** @author bomo 扇形外圈 / 内圈半径缩放百分比（见 `ModulePreferences.KEY_RADIAL_RADIUS_PERCENT`）。 */
     val radialRadiusPercent: Int = ModulePreferences.DEFAULT_RADIAL_RADIUS_PERCENT,
+    /** @author bomo 扇形选中圈描边厚度缩放百分比（见 `ModulePreferences.KEY_SELECTION_RING_WIDTH_PERCENT`）。 */
+    val selectionRingWidthPercent: Int = ModulePreferences.DEFAULT_SELECTION_RING_WIDTH_PERCENT,
+    /** @author bomo 扇形选中圈颜色 ARGB（[ModulePreferences.SELECTION_RING_COLOR_SYSTEM] = 跟随系统）。 */
+    val selectionRingColorArgb: Int = ModulePreferences.SELECTION_RING_COLOR_SYSTEM,
     val pinsSaved: Boolean = false,
     val pinnedComponents: List<ComponentName> = emptyList(),
     val innerPinsSaved: Boolean = false,
@@ -64,6 +68,14 @@ internal data class ModuleSettingsSnapshot(
             .putInt(
                 ModulePreferences.KEY_RADIAL_RADIUS_PERCENT,
                 ModulePreferences.coerceRadialRadiusPercent(radialRadiusPercent),
+            )
+            .putInt(
+                ModulePreferences.KEY_SELECTION_RING_WIDTH_PERCENT,
+                ModulePreferences.coerceSelectionRingWidthPercent(selectionRingWidthPercent),
+            )
+            .putInt(
+                ModulePreferences.KEY_SELECTION_RING_COLOR,
+                selectionRingColorArgb,
             )
             .putInt(
                 ModulePreferences.KEY_OUTSIDE_TAP_CLOSE_MODE,
@@ -155,6 +167,18 @@ internal data class ModuleSettingsSnapshot(
                         ModulePreferences.DEFAULT_RADIAL_RADIUS_PERCENT,
                     ),
                 )
+            val selectionRingWidthPercent =
+                ModulePreferences.coerceSelectionRingWidthPercent(
+                    preferences.getInt(
+                        ModulePreferences.KEY_SELECTION_RING_WIDTH_PERCENT,
+                        ModulePreferences.DEFAULT_SELECTION_RING_WIDTH_PERCENT,
+                    ),
+                )
+            val selectionRingColorArgb =
+                preferences.getInt(
+                    ModulePreferences.KEY_SELECTION_RING_COLOR,
+                    ModulePreferences.SELECTION_RING_COLOR_SYSTEM,
+                )
             val outsideTapCloseMode =
                 OutsideTapCloseMode.fromStoredValue(
                     preferences.getInt(
@@ -201,6 +225,8 @@ internal data class ModuleSettingsSnapshot(
                 triggerVerticalDp = triggerVerticalDp,
                 panelScalePercent = panelScalePercent,
                 radialRadiusPercent = radialRadiusPercent,
+                selectionRingWidthPercent = selectionRingWidthPercent,
+                selectionRingColorArgb = selectionRingColorArgb,
                 pinsSaved = pinsSaved,
                 pinnedComponents = pins,
                 outsideTapCloseMode = outsideTapCloseMode,

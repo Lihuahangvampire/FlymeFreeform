@@ -64,6 +64,39 @@ internal object ModulePreferences {
     const val MIN_RADIAL_RADIUS_PERCENT = 60
     const val MAX_RADIAL_RADIUS_PERCENT = 150
 
+    /**
+     * @author bomo 扇形选中圈描边厚度缩放百分比（100 = 默认 3.25dp 观感）。
+     * 写入方是模块 App（设置界面的滑条），侧边栏进程每次呼出扇形时按只读方式取值，
+     * 改完滑条**下次呼出即生效**。范围 50% ~ 250%。
+     */
+    const val KEY_SELECTION_RING_WIDTH_PERCENT = "selection_ring_width_percent_v1"
+    const val DEFAULT_SELECTION_RING_WIDTH_PERCENT = 100
+    const val MIN_SELECTION_RING_WIDTH_PERCENT = 50
+    const val MAX_SELECTION_RING_WIDTH_PERCENT = 250
+
+    /**
+     * @author bomo 扇形选中圈颜色（ARGB Int；[SELECTION_RING_COLOR_SYSTEM] 表示跟随系统强调蓝）。
+     * 写入方是模块 App（设置界面的色板），侧边栏进程每次呼出扇形时按只读方式取值。
+     */
+    const val KEY_SELECTION_RING_COLOR = "selection_ring_color_v1"
+
+    /** 选中圈颜色取「跟随系统」时的特殊存储值（默认；解析失败回退 ColorOS 风格蓝）。 */
+    const val SELECTION_RING_COLOR_SYSTEM = -2
+
+    /**
+     * @author bomo 选中圈可调色板（不含「跟随系统」项）：ARGB Int 列表。
+     * 顺序即设置界面色块展示顺序；「跟随系统」色块固定在列表最前。
+     */
+    val SELECTION_RING_COLOR_PRESETS: List<Int> =
+        listOf(
+            0xFF0A84FF.toInt(), // ColorOS 风格蓝
+            0xFFFFFFFF.toInt(), // 白
+            0xFF34C759.toInt(), // 绿
+            0xFFFF9500.toInt(), // 橙
+            0xFFFF3B30.toInt(), // 红
+            0xFFAF52DE.toInt(), // 紫
+        )
+
     const val DEFAULT_ENABLED = false
     const val DEFAULT_CORNER_ENABLED = true
     const val DEFAULT_CORNER_TRIGGER_RANGE_DP = 84
@@ -120,4 +153,8 @@ internal object ModulePreferences {
     /** @author bomo 扇形半径缩放百分比钳制；下限避免图标贴得太近，上限由屏幕安全区兜底。 */
     fun coerceRadialRadiusPercent(value: Int): Int =
         value.coerceIn(MIN_RADIAL_RADIUS_PERCENT, MAX_RADIAL_RADIUS_PERCENT)
+
+    /** @author bomo 选中圈描边厚度缩放百分比钳制；下限保证选中圈可见，上限避免盖满图标。 */
+    fun coerceSelectionRingWidthPercent(value: Int): Int =
+        value.coerceIn(MIN_SELECTION_RING_WIDTH_PERCENT, MAX_SELECTION_RING_WIDTH_PERCENT)
 }

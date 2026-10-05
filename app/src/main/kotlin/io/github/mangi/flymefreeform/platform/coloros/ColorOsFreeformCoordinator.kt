@@ -393,6 +393,8 @@ internal class ColorOsFreeformCoordinator(
                 x = x,
                 y = y,
                 radiusScale = lastSettings.radialRadiusPercent / 100f,
+                selectionRingWidthScale = lastSettings.selectionRingWidthPercent / 100f,
+                selectionRingColorArgb = lastSettings.selectionRingColorArgb,
             )
             overlay = view
             windowManager.addView(view, params)

@@ -2,10 +2,14 @@ package io.github.mangi.flymefreeform.ui
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
@@ -19,11 +23,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.ColorLens
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.ElectricalServices
 import androidx.compose.material.icons.rounded.History
@@ -46,9 +52,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
@@ -103,6 +113,10 @@ internal fun ControlScreen(
     onPanelScaleChange: (Int) -> Unit,
     /** @author bomo 扇形外圈 / 内圈半径缩放百分比变更（设置界面滑条，下次呼出生效）。 */
     onRadialRadiusChange: (Int) -> Unit,
+    /** @author bomo 扇形选中圈描边厚度缩放百分比变更。 */
+    onSelectionRingWidthChange: (Int) -> Unit,
+    /** @author bomo 扇形选中圈颜色（ARGB）变更。 */
+    onSelectionRingColorChange: (Int) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
     /** @author bomo 外圈固定应用未满时用最近使用补齐（开关）。 */
@@ -185,6 +199,8 @@ internal fun ControlScreen(
                             onCornerRangePreviewChange = { cornerRangePreview = it },
                             onPanelScaleChange = onPanelScaleChange,
                             onRadialRadiusChange = onRadialRadiusChange,
+                            onSelectionRingWidthChange = onSelectionRingWidthChange,
+                            onSelectionRingColorChange = onSelectionRingColorChange,
                             onNavigateToPinnedApps,
                         )
                     }
@@ -380,6 +396,10 @@ private fun SettingsCard(
     onPanelScaleChange: (Int) -> Unit,
     /** @author bomo 扇形外圈 / 内圈半径缩放百分比变更。 */
     onRadialRadiusChange: (Int) -> Unit,
+    /** @author bomo 扇形选中圈描边厚度缩放百分比变更。 */
+    onSelectionRingWidthChange: (Int) -> Unit,
+    /** @author bomo 扇形选中圈颜色（ARGB；跟随系统为 [ModulePreferences.SELECTION_RING_COLOR_SYSTEM]）变更。 */
+    onSelectionRingColorChange: (Int) -> Unit,
     onNavigateToPinnedApps: () -> Unit,
 ) {
     val moduleSummary =
@@ -534,6 +554,27 @@ private fun SettingsCard(
             coerceValue = ModulePreferences::coerceRadialRadiusPercent,
             onCommit = onRadialRadiusChange,
         )
+        // @author bomo 选中圈厚度滑条：默认基准为图标直径 6.8%（约 3.25dp 观感），
+        // 该滑条只缩放描边宽度，不改圈半径；写入远端配置后**下次呼出扇形**即生效。
+        RemotePercentSliderPreference(
+            icon = Icons.Rounded.TouchApp,
+            confirmedValue = state.settings.selectionRingWidthPercent,
+            isUpdating = state.isUpdating,
+            enabled = state.canChangeSettings,
+            title = stringResource(R.string.selection_ring_width_title),
+            summary = stringResource(R.string.selection_ring_width_summary),
+            valueRange =
+                ModulePreferences.MIN_SELECTION_RING_WIDTH_PERCENT.toFloat()..
+                    ModulePreferences.MAX_SELECTION_RING_WIDTH_PERCENT.toFloat(),
+            coerceValue = ModulePreferences::coerceSelectionRingWidthPercent,
+            onCommit = onSelectionRingWidthChange,
+        )
+        // @author bomo 选中圈颜色：色板首项「跟随系统」（系统强调蓝），其余为预设色。
+        SelectionColorPreference(
+            selectedArgb = state.settings.selectionRingColorArgb,
+            enabled = state.canChangeSettings,
+            onColorChange = onSelectionRingColorChange,
+        )
         ArrowPreference(
             title = stringResource(R.string.radial_apps_title),
             summary = appsSummary,
@@ -542,6 +583,61 @@ private fun SettingsCard(
             startAction = { PreferenceIcon(Icons.Rounded.Apps, state.canChangeSettings) },
         )
     }
+}
+
+/**
+ * @author bomo 扇形选中圈颜色选择：首项「跟随系统」（渐变蓝，动态取系统强调蓝），
+ * 其余为 [ModulePreferences.SELECTION_RING_COLOR_PRESETS] 预设色。
+ */
+@Composable
+private fun SelectionColorPreference(
+    selectedArgb: Int,
+    enabled: Boolean,
+    onColorChange: (Int) -> Unit,
+) {
+    val options =
+        listOf(ModulePreferences.SELECTION_RING_COLOR_SYSTEM) +
+            ModulePreferences.SELECTION_RING_COLOR_PRESETS
+    BasicComponent(
+        title = stringResource(R.string.selection_ring_color_title),
+        summary = stringResource(R.string.selection_ring_color_summary),
+        startAction = { PreferenceIcon(Icons.Rounded.ColorLens, enabled) },
+        endActions = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                options.forEach { argb ->
+                    val selected = argb == selectedArgb
+                    val swatch =
+                        if (argb == ModulePreferences.SELECTION_RING_COLOR_SYSTEM) {
+                            Modifier.background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF0A84FF), Color(0xFF6FD0FF)),
+                                ),
+                            )
+                        } else {
+                            Modifier.background(Color(argb))
+                        }
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(22.dp)
+                                .clip(CircleShape)
+                                .then(swatch)
+                                .border(
+                                    width = if (selected) 2.dp else 1.dp,
+                                    color =
+                                        if (selected) MiuixTheme.colorScheme.primary
+                                        else Color(0x33000000),
+                                    shape = CircleShape,
+                                )
+                                .clickable(enabled = enabled) { onColorChange(argb) },
+                    )
+                }
+            }
+        },
+    )
 }
 
 /**
