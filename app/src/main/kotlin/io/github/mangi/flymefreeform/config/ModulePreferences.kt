@@ -157,4 +157,52 @@ internal object ModulePreferences {
     /** @author bomo 选中圈描边厚度缩放百分比钳制；下限保证选中圈可见，上限避免盖满图标。 */
     fun coerceSelectionRingWidthPercent(value: Int): Int =
         value.coerceIn(MIN_SELECTION_RING_WIDTH_PERCENT, MAX_SELECTION_RING_WIDTH_PERCENT)
+
+    /**
+     * @author bomo 自绘「更多」面板宽度/高度百分比（100 = 自适应几何计算的结果）。
+     * 写入方是模块 App（设置界面滑条），system_server 每次打开面板时按只读取值，
+     * 改完滑条**下次打开面板即生效**，无需重启。范围 60% ~ 120%。
+     */
+    const val KEY_MORE_PANEL_WIDTH_PERCENT = "more_panel_width_percent_v1"
+    const val DEFAULT_MORE_PANEL_WIDTH_PERCENT = 100
+    const val MIN_MORE_PANEL_WIDTH_PERCENT = 60
+    const val MAX_MORE_PANEL_WIDTH_PERCENT = 120
+
+    const val KEY_MORE_PANEL_HEIGHT_PERCENT = "more_panel_height_percent_v1"
+    const val DEFAULT_MORE_PANEL_HEIGHT_PERCENT = 100
+    const val MIN_MORE_PANEL_HEIGHT_PERCENT = 60
+    const val MAX_MORE_PANEL_HEIGHT_PERCENT = 120
+
+    /** @author bomo 自绘「更多」面板圆角（dp；0 = 跟随自适应几何的圆角）。范围 0 ~ 48dp。 */
+    const val KEY_MORE_PANEL_CORNER_RADIUS_DP = "more_panel_corner_radius_dp_v1"
+    const val DEFAULT_MORE_PANEL_CORNER_RADIUS_DP = 0
+    const val MIN_MORE_PANEL_CORNER_RADIUS_DP = 0
+    const val MAX_MORE_PANEL_CORNER_RADIUS_DP = 48
+
+    /** @author bomo 自绘「更多」面板水平偏移（dp；正 = 向右，负 = 向左；0 = 自适应锚点）。 */
+    const val KEY_MORE_PANEL_OFFSET_X_DP = "more_panel_offset_x_dp_v1"
+    const val DEFAULT_MORE_PANEL_OFFSET_X_DP = 0
+    const val MIN_MORE_PANEL_OFFSET_X_DP = -120
+    const val MAX_MORE_PANEL_OFFSET_X_DP = 120
+
+    /** @author bomo 自绘「更多」面板垂直偏移（dp；正 = 向上，负 = 向下；0 = 自适应锚点）。 */
+    const val KEY_MORE_PANEL_OFFSET_Y_DP = "more_panel_offset_y_dp_v1"
+    const val DEFAULT_MORE_PANEL_OFFSET_Y_DP = 0
+    const val MIN_MORE_PANEL_OFFSET_Y_DP = -160
+    const val MAX_MORE_PANEL_OFFSET_Y_DP = 160
+
+    fun coerceMorePanelWidthPercent(value: Int): Int =
+        value.coerceIn(MIN_MORE_PANEL_WIDTH_PERCENT, MAX_MORE_PANEL_WIDTH_PERCENT)
+
+    fun coerceMorePanelHeightPercent(value: Int): Int =
+        value.coerceIn(MIN_MORE_PANEL_HEIGHT_PERCENT, MAX_MORE_PANEL_HEIGHT_PERCENT)
+
+    fun coerceMorePanelCornerRadiusDp(value: Int): Int =
+        value.coerceIn(MIN_MORE_PANEL_CORNER_RADIUS_DP, MAX_MORE_PANEL_CORNER_RADIUS_DP)
+
+    fun coerceMorePanelOffsetXDp(value: Int): Int =
+        value.coerceIn(MIN_MORE_PANEL_OFFSET_X_DP, MAX_MORE_PANEL_OFFSET_X_DP)
+
+    fun coerceMorePanelOffsetYDp(value: Int): Int =
+        value.coerceIn(MIN_MORE_PANEL_OFFSET_Y_DP, MAX_MORE_PANEL_OFFSET_Y_DP)
 }

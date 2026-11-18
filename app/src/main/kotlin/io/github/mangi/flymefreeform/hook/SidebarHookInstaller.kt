@@ -21,6 +21,7 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
     private var endpoint: ColorOsAllAppsEndpoint? = null
 
     fun install(loader: ClassLoader) {
+        installResourcesFallback()
         val handles = mutableListOf<XposedInterface.HookHandle>()
         try {
             val serviceClass = loader.loadClass(ColorOsSidebarTarget.SERVICE_CLASS)
@@ -127,6 +128,32 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
             log(Log.INFO, "TOOL_CATALOG_PUBLISHED count=${records.size}", null)
         } catch (exception: Exception) {
             log(Log.WARN, "TOOL_CATALOG_PUBLISH_FAILED", exception)
+        }
+    }
+
+    /**
+     * @author bomo 资源漂移宽容（:ui 进程同样生效）：侧边栏混淆代码对不存在的资源 ID
+     * 调 getText 会抛 Resources$NotFoundException，面板打开触发无障碍遍历时会把
+     * system_server 主线程带崩。兜底返回空串。
+     */
+    private fun installResourcesFallback() {
+        try {
+            val resources = Class.forName("android.content.res.Resources")
+            val getText = resources.getMethod("getText", Int::class.javaPrimitiveType)
+            module
+                .hook(getText)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .setId("flymefreeform.resources.gettext_fallback_ui")
+                .intercept { chain ->
+                    try {
+                        chain.proceed()
+                    } catch (exception: android.content.res.Resources.NotFoundException) {
+                        ""
+                    }
+                }
+            log(Log.INFO, "RESOURCES_GETTEXT_FALLBACK_INSTALLED", null)
+        } catch (exception: Throwable) {
+            log(Log.WARN, "RESOURCES_GETTEXT_FALLBACK_UNAVAILABLE", exception)
         }
     }
 

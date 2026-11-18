@@ -18,12 +18,14 @@ import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,6 +33,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountTree
+import androidx.compose.material.icons.rounded.Adjust
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.Check
@@ -54,11 +57,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -118,6 +123,8 @@ internal fun ControlScreen(
     onTriggerVerticalDpChange: (Int) -> Unit,
     /** @author bomo 「全部」面板缩放百分比变更（设置界面滑条，热生效）。 */
     onPanelScaleChange: (Int) -> Unit,
+    /** @author bomo 自绘「更多」面板自定义几何变更（宽/高百分比 + 圆角 + 偏移，下次打开生效）。 */
+    onMorePanelGeometryChange: (widthPercent: Int, heightPercent: Int, cornerRadiusDp: Int, offsetXDp: Int, offsetYDp: Int) -> Unit,
     /** @author bomo 扇形外圈 / 内圈半径缩放百分比变更（设置界面滑条，下次呼出生效）。 */
     onRadialRadiusChange: (Int) -> Unit,
     /** @author bomo 扇形选中圈描边厚度缩放百分比变更。 */
@@ -136,6 +143,8 @@ internal fun ControlScreen(
     val scrollBehavior = MiuixScrollBehavior()
     val backdrop = rememberTopBarBackdrop()
     val topBarColor = topBarContainerColor(backdrop)
+    // @author bomo 底部导航分类：0 扇形 / 1 更多 / 2 交互 / 3 通用。
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     // @author bomo 拖动任一条触发热区滑条时，用「其余项的已确认值 + 正在拖动的草稿值」
     // 拼出预览快照；松手即置空收回预览。三条滑条共用同一个预览通道。
     var cornerRangePreview by remember { mutableStateOf<TriggerRangePreview?>(null) }
@@ -167,6 +176,9 @@ internal fun ControlScreen(
                     }
                 }
             },
+            bottomBar = {
+                PanelBottomBar(selected = selectedTab, onSelect = { selectedTab = it })
+            },
         ) { innerPadding ->
             val layoutDirection = LocalLayoutDirection.current
             val safeStart = innerPadding.calculateStartPadding(layoutDirection)
@@ -192,43 +204,64 @@ internal fun ControlScreen(
                         ),
                     overscrollEffect = null,
                 ) {
-                    item(key = "runtime") { RuntimeCard(state, onRequestScopes) }
-                    item(key = "settings") {
-                        SettingsCard(
-                            state,
-                            onModuleEnabledChange,
-                            onLeftCornerEnabledChange,
-                            onRightCornerEnabledChange,
-                            onCornerTriggerRangeChange,
-                            onTriggerShapeChange = onTriggerShapeChange,
-                            onTriggerHorizontalDpChange = onTriggerHorizontalDpChange,
-                            onTriggerVerticalDpChange = onTriggerVerticalDpChange,
-                            onCornerRangePreviewChange = { cornerRangePreview = it },
-                            onPanelScaleChange = onPanelScaleChange,
-                            onRadialRadiusChange = onRadialRadiusChange,
-                            onSelectionRingWidthChange = onSelectionRingWidthChange,
-                            onSelectionRingColorChange = onSelectionRingColorChange,
-                            onNavigateToPinnedApps,
-                        )
+                    // @author bomo 按底部导航分类展示：0 扇形 / 1 更多 / 2 交互 / 3 通用。
+                    when (selectedTab) {
+                        0 -> {
+                            item(key = "settings") {
+                                SettingsCard(
+                                    state,
+                                    onModuleEnabledChange,
+                                    onLeftCornerEnabledChange,
+                                    onRightCornerEnabledChange,
+                                    onCornerTriggerRangeChange,
+                                    onTriggerShapeChange = onTriggerShapeChange,
+                                    onTriggerHorizontalDpChange = onTriggerHorizontalDpChange,
+                                    onTriggerVerticalDpChange = onTriggerVerticalDpChange,
+                                    onCornerRangePreviewChange = { cornerRangePreview = it },
+                                    onPanelScaleChange = onPanelScaleChange,
+                                    onRadialRadiusChange = onRadialRadiusChange,
+                                    onSelectionRingWidthChange = onSelectionRingWidthChange,
+                                    onSelectionRingColorChange = onSelectionRingColorChange,
+                                    onNavigateToPinnedApps,
+                                )
+                            }
+                            item(key = "radial_apps_policy") {
+                                RadialAppsPolicyCard(
+                                    state = state,
+                                    onFillOuterWithRecentChange = onFillOuterWithRecentChange,
+                                )
+                            }
+                        }
+                        1 -> {
+                            item(key = "more_panel_custom") {
+                                MorePanelCustomCard(
+                                    state = state,
+                                    onMorePanelGeometryChange = onMorePanelGeometryChange,
+                                )
+                            }
+                        }
+                        2 -> {
+                            item(key = "window_interaction") {
+                                WindowInteractionCard(
+                                    state = state,
+                                    onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
+                                    onHandleSwipeUpToMiniEnabledChange =
+                                        onHandleSwipeUpToMiniEnabledChange,
+                                )
+                            }
+                        }
+                        else -> {
+                            item(key = "runtime") { RuntimeCard(state, onRequestScopes) }
+                            item(key = "environment") {
+                                EnvironmentCard(
+                                    state,
+                                    onPauseInLandscapeChange,
+                                    onPauseInGameModeChange,
+                                )
+                            }
+                            item(key = "about") { AboutCard() }
+                        }
                     }
-                    item(key = "window_interaction") {
-                        WindowInteractionCard(
-                            state = state,
-                            onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
-                            onHandleSwipeUpToMiniEnabledChange =
-                                onHandleSwipeUpToMiniEnabledChange,
-                        )
-                    }
-                    item(key = "radial_apps_policy") {
-                        RadialAppsPolicyCard(
-                            state = state,
-                            onFillOuterWithRecentChange = onFillOuterWithRecentChange,
-                        )
-                    }
-                    item(key = "environment") {
-                        EnvironmentCard(state, onPauseInLandscapeChange, onPauseInGameModeChange)
-                    }
-                    item(key = "about") { AboutCard() }
                 }
             }
         }
@@ -381,6 +414,99 @@ private fun RuntimeCard(state: FrameworkConnectionState, onRequestScopes: () -> 
                 )
             },
             startAction = { PreferenceIcon(Icons.Rounded.Dashboard) },
+        )
+    }
+}
+
+/**
+ * @author bomo 自绘「更多」面板自定义几何独立卡片（位置 / 长宽 / 圆角）。
+ * 五条滑条共用一次提交：任一条变更时带上其余项当前值，保证设置不互相覆盖。
+ */
+@Composable
+private fun MorePanelCustomCard(
+    state: FrameworkConnectionState,
+    onMorePanelGeometryChange: (widthPercent: Int, heightPercent: Int, cornerRadiusDp: Int, offsetXDp: Int, offsetYDp: Int) -> Unit,
+) {
+    fun commitMorePanelGeometry(
+        width: Int = state.settings.morePanelWidthPercent,
+        height: Int = state.settings.morePanelHeightPercent,
+        corner: Int = state.settings.morePanelCornerRadiusDp,
+        offsetX: Int = state.settings.morePanelOffsetXDp,
+        offsetY: Int = state.settings.morePanelOffsetYDp,
+    ) {
+        onMorePanelGeometryChange(width, height, corner, offsetX, offsetY)
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.more_panel_custom_card_title),
+            color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            style = MiuixTheme.textStyles.body2,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+        )
+        RemotePercentSliderPreference(
+            icon = Icons.Rounded.Dashboard,
+            confirmedValue = state.settings.morePanelWidthPercent,
+            isUpdating = state.isUpdating,
+            enabled = state.canChangeSettings,
+            title = stringResource(R.string.more_panel_width_title),
+            summary = stringResource(R.string.more_panel_width_summary),
+            valueRange =
+                ModulePreferences.MIN_MORE_PANEL_WIDTH_PERCENT.toFloat()..
+                    ModulePreferences.MAX_MORE_PANEL_WIDTH_PERCENT.toFloat(),
+            coerceValue = ModulePreferences::coerceMorePanelWidthPercent,
+            onCommit = { commitMorePanelGeometry(width = it) },
+        )
+        RemotePercentSliderPreference(
+            icon = Icons.Rounded.Dashboard,
+            confirmedValue = state.settings.morePanelHeightPercent,
+            isUpdating = state.isUpdating,
+            enabled = state.canChangeSettings,
+            title = stringResource(R.string.more_panel_height_title),
+            summary = stringResource(R.string.more_panel_height_summary),
+            valueRange =
+                ModulePreferences.MIN_MORE_PANEL_HEIGHT_PERCENT.toFloat()..
+                    ModulePreferences.MAX_MORE_PANEL_HEIGHT_PERCENT.toFloat(),
+            coerceValue = ModulePreferences::coerceMorePanelHeightPercent,
+            onCommit = { commitMorePanelGeometry(height = it) },
+        )
+        RemoteDpSliderPreference(
+            icon = Icons.Rounded.Straighten,
+            confirmedValue = state.settings.morePanelCornerRadiusDp,
+            isUpdating = state.isUpdating,
+            enabled = state.canChangeSettings,
+            title = stringResource(R.string.more_panel_corner_title),
+            summary = stringResource(R.string.more_panel_corner_summary),
+            onPreviewChange = {},
+            onCommit = { commitMorePanelGeometry(corner = it) },
+            coerce = ModulePreferences::coerceMorePanelCornerRadiusDp,
+            minDp = ModulePreferences.MIN_MORE_PANEL_CORNER_RADIUS_DP,
+            maxDp = ModulePreferences.MAX_MORE_PANEL_CORNER_RADIUS_DP,
+        )
+        RemoteDpSliderPreference(
+            icon = Icons.Rounded.SwapHoriz,
+            confirmedValue = state.settings.morePanelOffsetXDp,
+            isUpdating = state.isUpdating,
+            enabled = state.canChangeSettings,
+            title = stringResource(R.string.more_panel_offset_x_title),
+            summary = stringResource(R.string.more_panel_offset_x_summary),
+            onPreviewChange = {},
+            onCommit = { commitMorePanelGeometry(offsetX = it) },
+            coerce = ModulePreferences::coerceMorePanelOffsetXDp,
+            minDp = ModulePreferences.MIN_MORE_PANEL_OFFSET_X_DP,
+            maxDp = ModulePreferences.MAX_MORE_PANEL_OFFSET_X_DP,
+        )
+        RemoteDpSliderPreference(
+            icon = Icons.Rounded.SwapVert,
+            confirmedValue = state.settings.morePanelOffsetYDp,
+            isUpdating = state.isUpdating,
+            enabled = state.canChangeSettings,
+            title = stringResource(R.string.more_panel_offset_y_title),
+            summary = stringResource(R.string.more_panel_offset_y_summary),
+            onPreviewChange = {},
+            onCommit = { commitMorePanelGeometry(offsetY = it) },
+            coerce = ModulePreferences::coerceMorePanelOffsetYDp,
+            minDp = ModulePreferences.MIN_MORE_PANEL_OFFSET_Y_DP,
+            maxDp = ModulePreferences.MAX_MORE_PANEL_OFFSET_Y_DP,
         )
     }
 }
@@ -1125,6 +1251,63 @@ private fun PreferenceIcon(imageVector: ImageVector, enabled: Boolean = true) {
             if (enabled) MiuixTheme.colorScheme.onBackground
             else MiuixTheme.colorScheme.disabledOnSecondaryVariant,
     )
+}
+
+/**
+ * @author bomo 设置页底部导航栏：扇形 / 更多 / 交互 / 通用 四分类。
+ * 选中项以系统强调色高亮，点击切换分类。
+ */
+@Composable
+private fun PanelBottomBar(selected: Int, onSelect: (Int) -> Unit) {
+    val navTabs =
+        listOf(
+            Triple(Icons.Rounded.Adjust, "扇形", 0),
+            Triple(Icons.Rounded.Apps, "更多", 1),
+            Triple(Icons.Rounded.TouchApp, "交互", 2),
+            Triple(Icons.Rounded.Info, "通用", 3),
+        )
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .background(MiuixTheme.colorScheme.surface)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        navTabs.forEach { (icon, label, index) ->
+            val active = index == selected
+            Column(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { onSelect(index) }
+                        .padding(top = 2.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    modifier = Modifier.size(22.dp),
+                    tint =
+                        if (active) MiuixTheme.colorScheme.primary
+                        else MiuixTheme.colorScheme.onBackground.copy(alpha = 0.55f),
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = label,
+                    fontSize = 11.sp,
+                    color =
+                        if (active) MiuixTheme.colorScheme.primary
+                        else MiuixTheme.colorScheme.onBackground.copy(alpha = 0.55f),
+                )
+            }
+        }
+    }
 }
 
 @Composable

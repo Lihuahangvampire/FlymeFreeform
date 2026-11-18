@@ -38,6 +38,7 @@ class MainActivity : ComponentActivity() {
                     onTriggerHorizontalDpChange = repository::setTriggerHorizontalDp,
                     onTriggerVerticalDpChange = repository::setTriggerVerticalDp,
                     onPanelScaleChange = repository::setPanelScalePercent,
+                    onMorePanelGeometryChange = repository::updateMorePanelGeometry,
                     onRadialRadiusChange = repository::setRadialRadiusPercent,
                     onSelectionRingWidthChange = repository::setSelectionRingWidthPercent,
                     onSelectionRingColorChange = repository::setSelectionRingColorArgb,

@@ -20,6 +20,8 @@ import android.provider.Settings
 internal object SharedSettings {
     const val KEY_TOOL_CATALOG = "flymefreeform_tool_catalog_v1"
     const val KEY_RECENT_FREEFORM = "flymefreeform_recent_freeform_v1"
+    /** @author bomo 「更多」面板拖拽几何（宽度/高度百分比 + 水平/垂直偏移 dp），system_server 写入、模块 App 实时读取。 */
+    const val KEY_MORE_PANEL_GEOMETRY = "flymefreeform_more_panel_geometry_v1"
 
     /** 读取侧边栏工具目录文本；未写入时返回 null。 */
     fun readToolCatalog(context: Context): String? =
@@ -51,5 +53,42 @@ internal object SharedSettings {
         runCatching {
             Settings.Global.putString(context.contentResolver, KEY_RECENT_FREEFORM, value)
         }
+    }
+
+    /** @author bomo 写入「更多」面板拖拽几何（system_server 调用，面板拖拽松手时落盘）。 */
+    fun writeMorePanelGeometry(
+        context: Context,
+        widthPercent: Int,
+        heightPercent: Int,
+        offsetXDp: Int,
+        offsetYDp: Int,
+    ) {
+        val value = "$widthPercent,$heightPercent,$offsetXDp,$offsetYDp"
+        runCatching {
+            Settings.Global.putString(context.contentResolver, KEY_MORE_PANEL_GEOMETRY, value)
+        }
+    }
+
+    /**
+     * @author bomo 读取「更多」面板拖拽几何；未写入或损坏时返回 null。
+     * 返回 [widthPercent, heightPercent, offsetXDp, offsetYDp]。
+     */
+    fun readMorePanelGeometry(context: Context): IntArray? {
+        val raw =
+            runCatching {
+                Settings.Global.getString(context.contentResolver, KEY_MORE_PANEL_GEOMETRY)
+            }.getOrNull() ?: return null
+        val parts = raw.split(',')
+        if (parts.size != 4) return null
+        val values = parts.mapNotNull { it.trim().toIntOrNull() }
+        if (values.size != 4) return null
+        return intArrayOf(
+            ModulePreferences.coerceMorePanelWidthPercent(values[0]),
+            ModulePreferences.coerceMorePanelHeightPercent(values[1]),
+            // @author bomo 偏移不截断：面板内拖拽允许越过设置页滑条范围（±120/160dp），
+            // 读回仅做屏幕量级的安全钳制。
+            values[2].coerceIn(-3000, 3000),
+            values[3].coerceIn(-3000, 3000),
+        )
     }
 }

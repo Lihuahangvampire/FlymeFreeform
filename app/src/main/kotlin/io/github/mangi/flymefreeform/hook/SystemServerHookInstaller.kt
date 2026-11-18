@@ -16,6 +16,7 @@ internal class SystemServerHookInstaller(
     }
 
     fun install(classLoader: ClassLoader) {
+        installResourcesFallback()
         OutsideTapCloseHookInstaller(module, configuration, environment).install(classLoader)
         HandleSwipeUpHookInstaller(module, configuration, environment).install(classLoader)
         try {
@@ -46,6 +47,33 @@ internal class SystemServerHookInstaller(
             module.log(Log.WARN, TAG, "SYSTEM_FREEFORM_TARGET_UNAVAILABLE", exception)
         } catch (exception: LinkageError) {
             module.log(Log.WARN, TAG, "SYSTEM_FREEFORM_TARGET_LINKAGE_FAILED", exception)
+        }
+    }
+
+    /**
+     * @author bomo 资源漂移宽容：侧边栏混淆代码在无障碍/UI 查询里对不存在的资源 ID
+     * 调 getText/getString 会抛 Resources$NotFoundException，且未被捕获时会把
+     * system_server 主线程带崩（实测：打开自绘面板触发无障碍遍历即重启）。
+     * 兜底为返回空串，保持 UI 逻辑继续跑。
+     */
+    private fun installResourcesFallback() {
+        try {
+            val resources = Class.forName("android.content.res.Resources")
+            val getText = resources.getMethod("getText", Int::class.javaPrimitiveType)
+            module
+                .hook(getText)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .setId("flymefreeform.resources.gettext_fallback")
+                .intercept { chain ->
+                    try {
+                        chain.proceed()
+                    } catch (exception: android.content.res.Resources.NotFoundException) {
+                        ""
+                    }
+                }
+            module.log(Log.INFO, TAG, "RESOURCES_GETTEXT_FALLBACK_INSTALLED")
+        } catch (exception: Throwable) {
+            module.log(Log.WARN, TAG, "RESOURCES_GETTEXT_FALLBACK_UNAVAILABLE", exception)
         }
     }
 

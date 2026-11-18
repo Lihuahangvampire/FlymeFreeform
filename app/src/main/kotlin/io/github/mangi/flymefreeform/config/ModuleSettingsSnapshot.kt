@@ -22,6 +22,16 @@ internal data class ModuleSettingsSnapshot(
     val selectionRingWidthPercent: Int = ModulePreferences.DEFAULT_SELECTION_RING_WIDTH_PERCENT,
     /** @author bomo 扇形选中圈颜色 ARGB（[ModulePreferences.SELECTION_RING_COLOR_SYSTEM] = 跟随系统）。 */
     val selectionRingColorArgb: Int = ModulePreferences.SELECTION_RING_COLOR_SYSTEM,
+    /** @author bomo 自绘「更多」面板宽度百分比（100 = 自适应）。 */
+    val morePanelWidthPercent: Int = ModulePreferences.DEFAULT_MORE_PANEL_WIDTH_PERCENT,
+    /** @author bomo 自绘「更多」面板高度百分比（100 = 自适应）。 */
+    val morePanelHeightPercent: Int = ModulePreferences.DEFAULT_MORE_PANEL_HEIGHT_PERCENT,
+    /** @author bomo 自绘「更多」面板圆角 dp（0 = 跟随自适应几何）。 */
+    val morePanelCornerRadiusDp: Int = ModulePreferences.DEFAULT_MORE_PANEL_CORNER_RADIUS_DP,
+    /** @author bomo 自绘「更多」面板水平偏移 dp（0 = 自适应锚点）。 */
+    val morePanelOffsetXDp: Int = ModulePreferences.DEFAULT_MORE_PANEL_OFFSET_X_DP,
+    /** @author bomo 自绘「更多」面板垂直偏移 dp（0 = 自适应锚点）。 */
+    val morePanelOffsetYDp: Int = ModulePreferences.DEFAULT_MORE_PANEL_OFFSET_Y_DP,
     val pinsSaved: Boolean = false,
     val pinnedComponents: List<ComponentName> = emptyList(),
     val innerPinsSaved: Boolean = false,
@@ -76,6 +86,26 @@ internal data class ModuleSettingsSnapshot(
             .putInt(
                 ModulePreferences.KEY_SELECTION_RING_COLOR,
                 selectionRingColorArgb,
+            )
+            .putInt(
+                ModulePreferences.KEY_MORE_PANEL_WIDTH_PERCENT,
+                ModulePreferences.coerceMorePanelWidthPercent(morePanelWidthPercent),
+            )
+            .putInt(
+                ModulePreferences.KEY_MORE_PANEL_HEIGHT_PERCENT,
+                ModulePreferences.coerceMorePanelHeightPercent(morePanelHeightPercent),
+            )
+            .putInt(
+                ModulePreferences.KEY_MORE_PANEL_CORNER_RADIUS_DP,
+                ModulePreferences.coerceMorePanelCornerRadiusDp(morePanelCornerRadiusDp),
+            )
+            .putInt(
+                ModulePreferences.KEY_MORE_PANEL_OFFSET_X_DP,
+                ModulePreferences.coerceMorePanelOffsetXDp(morePanelOffsetXDp),
+            )
+            .putInt(
+                ModulePreferences.KEY_MORE_PANEL_OFFSET_Y_DP,
+                ModulePreferences.coerceMorePanelOffsetYDp(morePanelOffsetYDp),
             )
             .putInt(
                 ModulePreferences.KEY_OUTSIDE_TAP_CLOSE_MODE,
@@ -179,6 +209,41 @@ internal data class ModuleSettingsSnapshot(
                     ModulePreferences.KEY_SELECTION_RING_COLOR,
                     ModulePreferences.SELECTION_RING_COLOR_SYSTEM,
                 )
+            val morePanelWidthPercent =
+                ModulePreferences.coerceMorePanelWidthPercent(
+                    preferences.getInt(
+                        ModulePreferences.KEY_MORE_PANEL_WIDTH_PERCENT,
+                        ModulePreferences.DEFAULT_MORE_PANEL_WIDTH_PERCENT,
+                    ),
+                )
+            val morePanelHeightPercent =
+                ModulePreferences.coerceMorePanelHeightPercent(
+                    preferences.getInt(
+                        ModulePreferences.KEY_MORE_PANEL_HEIGHT_PERCENT,
+                        ModulePreferences.DEFAULT_MORE_PANEL_HEIGHT_PERCENT,
+                    ),
+                )
+            val morePanelCornerRadiusDp =
+                ModulePreferences.coerceMorePanelCornerRadiusDp(
+                    preferences.getInt(
+                        ModulePreferences.KEY_MORE_PANEL_CORNER_RADIUS_DP,
+                        ModulePreferences.DEFAULT_MORE_PANEL_CORNER_RADIUS_DP,
+                    ),
+                )
+            val morePanelOffsetXDp =
+                ModulePreferences.coerceMorePanelOffsetXDp(
+                    preferences.getInt(
+                        ModulePreferences.KEY_MORE_PANEL_OFFSET_X_DP,
+                        ModulePreferences.DEFAULT_MORE_PANEL_OFFSET_X_DP,
+                    ),
+                )
+            val morePanelOffsetYDp =
+                ModulePreferences.coerceMorePanelOffsetYDp(
+                    preferences.getInt(
+                        ModulePreferences.KEY_MORE_PANEL_OFFSET_Y_DP,
+                        ModulePreferences.DEFAULT_MORE_PANEL_OFFSET_Y_DP,
+                    ),
+                )
             val outsideTapCloseMode =
                 OutsideTapCloseMode.fromStoredValue(
                     preferences.getInt(
@@ -227,6 +292,11 @@ internal data class ModuleSettingsSnapshot(
                 radialRadiusPercent = radialRadiusPercent,
                 selectionRingWidthPercent = selectionRingWidthPercent,
                 selectionRingColorArgb = selectionRingColorArgb,
+                morePanelWidthPercent = morePanelWidthPercent,
+                morePanelHeightPercent = morePanelHeightPercent,
+                morePanelCornerRadiusDp = morePanelCornerRadiusDp,
+                morePanelOffsetXDp = morePanelOffsetXDp,
+                morePanelOffsetYDp = morePanelOffsetYDp,
                 pinsSaved = pinsSaved,
                 pinnedComponents = pins,
                 outsideTapCloseMode = outsideTapCloseMode,

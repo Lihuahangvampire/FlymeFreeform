@@ -6,31 +6,51 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.res.Configuration
 import android.content.res.Resources
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.RoundedCorner
 import android.view.WindowInsets
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.FitScreen
+import androidx.compose.material.icons.rounded.OpenWith
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.viewinterop.AndroidView
+import top.yukonga.miuix.kmp.basic.Icon
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -43,10 +63,14 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +78,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Offset
@@ -64,6 +89,7 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -101,6 +127,7 @@ import io.github.mangi.flymefreeform.platform.coloros.AppCatalogSnapshot
 import io.github.mangi.flymefreeform.platform.coloros.RadialAppEntry
 import io.github.mangi.flymefreeform.ui.theme.CornerOverlayTheme
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.anim.folmeSpring
 import top.yukonga.miuix.kmp.basic.Text
@@ -108,6 +135,7 @@ import top.yukonga.miuix.kmp.squircle.addSquircleRect
 import top.yukonga.miuix.kmp.squircle.isSquircleEnabled
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 @SuppressLint("ViewConstructor")
@@ -119,6 +147,9 @@ internal class CornerRadialOverlayView(
         fun onAppCommitted(entry: RadialAppEntry)
 
         fun onMorePanelRequested()
+
+        /** @author bomo 自绘「更多」面板拖拽调整几何（宽/高百分比 + 偏移 dp）松手时回调，用于落盘同步设置页。 */
+        fun onMorePanelGeometryChanged(widthPercent: Int, heightPercent: Int, offsetXDp: Int, offsetYDp: Int)
 
         fun onDismissRequested()
 
@@ -164,6 +195,14 @@ internal class CornerRadialOverlayView(
     private var selectionRingWidthScale = 1f
     /** @author bomo 选中圈颜色 ARGB；[ModulePreferences.SELECTION_RING_COLOR_SYSTEM] = 跟随系统。 */
     private var selectionRingColorArgb = ModulePreferences.SELECTION_RING_COLOR_SYSTEM
+    /** @author bomo 自绘「更多」面板自定义几何（默认值 = 自适应几何计算）。 */
+    private var morePanelWidthPercent = ModulePreferences.DEFAULT_MORE_PANEL_WIDTH_PERCENT
+    private var morePanelHeightPercent = ModulePreferences.DEFAULT_MORE_PANEL_HEIGHT_PERCENT
+    private var morePanelCornerRadiusDp = ModulePreferences.DEFAULT_MORE_PANEL_CORNER_RADIUS_DP
+    private var morePanelOffsetXDp = ModulePreferences.DEFAULT_MORE_PANEL_OFFSET_X_DP
+    private var morePanelOffsetYDp = ModulePreferences.DEFAULT_MORE_PANEL_OFFSET_Y_DP
+    /** @author bomo 定制前的自适应几何（拖拽调整的基准，避免基于上次定制结果反复缩放）。 */
+    private var basePanelMetrics: AdaptiveOverlayMetrics? = null
     private var lastTickUptime = 0L
     private val timeout = Runnable(::requestDismiss)
     private val dismissFallback = Runnable(::completeRadialExit)
@@ -202,6 +241,12 @@ internal class CornerRadialOverlayView(
         selectionRingWidthScale: Float = 1f,
         /** @author bomo 选中圈颜色 ARGB；[ModulePreferences.SELECTION_RING_COLOR_SYSTEM] = 跟随系统。 */
         selectionRingColorArgb: Int = ModulePreferences.SELECTION_RING_COLOR_SYSTEM,
+        /** @author bomo 自绘「更多」面板自定义几何（宽/高百分比 + 圆角 dp + 偏移 dp；默认自适应）。 */
+        morePanelWidthPercent: Int = ModulePreferences.DEFAULT_MORE_PANEL_WIDTH_PERCENT,
+        morePanelHeightPercent: Int = ModulePreferences.DEFAULT_MORE_PANEL_HEIGHT_PERCENT,
+        morePanelCornerRadiusDp: Int = ModulePreferences.DEFAULT_MORE_PANEL_CORNER_RADIUS_DP,
+        morePanelOffsetXDp: Int = ModulePreferences.DEFAULT_MORE_PANEL_OFFSET_X_DP,
+        morePanelOffsetYDp: Int = ModulePreferences.DEFAULT_MORE_PANEL_OFFSET_Y_DP,
     ) {
         check(!isAttachedToWindow) { "Overlay must be initialized before it is attached" }
         this.side = side
@@ -210,6 +255,31 @@ internal class CornerRadialOverlayView(
         this.selectionRingWidthScale =
             selectionRingWidthScale.coerceIn(SELECTION_RING_WIDTH_SCALE_MIN, SELECTION_RING_WIDTH_SCALE_MAX)
         this.selectionRingColorArgb = selectionRingColorArgb
+        this.morePanelWidthPercent =
+            morePanelWidthPercent.coerceIn(
+                ModulePreferences.MIN_MORE_PANEL_WIDTH_PERCENT,
+                ModulePreferences.MAX_MORE_PANEL_WIDTH_PERCENT,
+            )
+        this.morePanelHeightPercent =
+            morePanelHeightPercent.coerceIn(
+                ModulePreferences.MIN_MORE_PANEL_HEIGHT_PERCENT,
+                ModulePreferences.MAX_MORE_PANEL_HEIGHT_PERCENT,
+            )
+        this.morePanelCornerRadiusDp =
+            morePanelCornerRadiusDp.coerceIn(
+                ModulePreferences.MIN_MORE_PANEL_CORNER_RADIUS_DP,
+                ModulePreferences.MAX_MORE_PANEL_CORNER_RADIUS_DP,
+            )
+        this.morePanelOffsetXDp =
+            morePanelOffsetXDp.coerceIn(
+                ModulePreferences.MIN_MORE_PANEL_OFFSET_X_DP,
+                ModulePreferences.MAX_MORE_PANEL_OFFSET_X_DP,
+            )
+        this.morePanelOffsetYDp =
+            morePanelOffsetYDp.coerceIn(
+                ModulePreferences.MIN_MORE_PANEL_OFFSET_Y_DP,
+                ModulePreferences.MAX_MORE_PANEL_OFFSET_Y_DP,
+            )
         latestX = x
         latestY = y
         radialImages.value = catalog.radialApps.map { entry -> entry.icon.asImageBitmap() }
@@ -719,36 +789,103 @@ internal class CornerRadialOverlayView(
         val horizontalPadding = with(density) { metrics.contentHorizontalPadding.toDp() }
         val verticalPadding = with(density) { metrics.topPadding.toDp() }
         val cellHeight = with(density) { metrics.cellHeight.toDp() }
-        val iconSize = with(density) { metrics.iconDiameter.toDp() }
-        val labelGap = with(density) { (metrics.labelTopOffset - metrics.iconDiameter / 2f).toDp() }
+        // @author bomo 图标放大但不影响布局：仅放大图标绘制尺寸，格子/间距/行高不变。
+        val iconSize = with(density) { metrics.iconDiameter.toDp() } * PANEL_ICON_SIZE_BOOST
+        // @author bomo 图标与名称间距：基于图标中心到标签的偏移计算，再额外收窄 3dp 让名称更贴近图标。
+        val labelGap = with(density) { (metrics.labelTopOffset - metrics.iconDiameter / 2f).toDp() } - 3.dp
         val labelSize = with(density) { metrics.labelTextSize.toSp() }
+        // @author bomo 顶栏搜索：按应用名（含中文）或拼音首字母过滤。
+        var query by remember { mutableStateOf("") }
+        var showKeyboard by remember { mutableStateOf(false) }
+        // @author bomo 系统输入法模式：搜索框点击后优先调用系统 IME，未激活时回退自绘键盘。
+        var useSystemIme by remember { mutableStateOf(false) }
+        // @author bomo 面板编辑模式：开启后显示灰色轮廓线 + 右下角缩放手柄 + 中心四向移动箭头。
+        var panelEditMode by remember { mutableStateOf(false) }
+        val filteredApps =
+            remember(catalog.panelApps, query) {
+                val q = query.trim()
+                if (q.isEmpty()) {
+                    catalog.panelApps
+                } else {
+                    val qc = q.uppercase()
+                    catalog.panelApps.filter { entry ->
+                        val label = entry.label
+                        val initials = pinyinInitialsOf(label)
+                        if (qc.length == 1) {
+                            // @author bomo 单字符：严格匹配首字母（拼音首字母或英文首字母/前缀），
+                            // 不再用「名称包含」以免混入首字母不符的应用（如输入 R 出现首字母非 R）。
+                            initials.firstOrNull()?.toString() == qc ||
+                                label.startsWith(q, ignoreCase = true)
+                        } else {
+                            // 多字符：拼音首字母序列前缀（如 "wx"→微信）/ 名称前缀 / 名称包含。
+                            initials.startsWith(qc) ||
+                                label.startsWith(q, ignoreCase = true) ||
+                                label.contains(q, ignoreCase = true)
+                        }
+                    }
+                }
+            }
         // @author bomo 按首字母分组：字母（A-Z 后 #）→ 该字母下的全部应用，
-        // 组内保持 panelApps 相对顺序（最近使用在该字母内仍靠前）。
-        val grouped: List<Pair<Char, List<RadialAppEntry>>> = remember(catalog.panelApps) {
+        // 组内保持 filteredApps 相对顺序（最近使用在该字母内仍靠前）。
+        val grouped: List<Pair<Char, List<RadialAppEntry>>> = remember(filteredApps) {
             val letters = LinkedHashSet<Char>()
-            catalog.panelApps.forEach { entry -> letters.add(initialOf(entry.label)) }
+            filteredApps.forEach { entry -> letters.add(initialOf(entry.label)) }
             letters.sortedWith { first, second ->
                 when {
                     first == '#' && second != '#' -> 1
                     second == '#' && first != '#' -> -1
                     else -> first.compareTo(second)
                 }
-            }.map { letter -> letter to catalog.panelApps.filter { initialOf(it.label) == letter } }
+            }.map { letter -> letter to filteredApps.filter { initialOf(it.label) == letter } }
         }
         val letters = grouped.map { it.first }
-        // 每个字母组标题行在网格中的 item 下标（累计前导标题行数）。
-        val headerTargets: List<Int> = remember(grouped) {
+        // 每个字母组标题行在网格中的 item 下标（累计前导标题行数；「最近使用」区占据 1 个标题 + 两行格子）。
+        // @author bomo 偏移基准 = 实际渲染的最近使用 item 数（recentApps 不足 columns*RECENT_ROWS 时按实际），
+        // 且 columns 变化（面板宽度调整）时重算——修复修改长宽后下次呼出索引与分组错位。
+        val headerTargets: List<Int> = remember(grouped, query, catalog.recentApps, metrics.columns) {
             val list = mutableListOf<Int>()
             var acc = 0
+            if (query.isEmpty() && catalog.recentApps.isNotEmpty()) {
+                val recentCells = minOf(catalog.recentApps.size, metrics.columns * RECENT_ROWS)
+                acc += recentCells + 1
+            }
             grouped.forEach { (_, apps) ->
                 list.add(acc)
                 acc += apps.size + 1
             }
             list
         }
+        // @author bomo 索引条数据：最近使用区用「*」符号（置于字母之前），点击滚动到最近区顶部。
+        val starShown = query.isEmpty() && catalog.recentApps.isNotEmpty()
+        val indexLetters = remember(starShown, letters) {
+            if (starShown) listOf('*') + letters else letters
+        }
+        val indexTargets = remember(starShown, headerTargets) {
+            if (starShown) listOf(0) + headerTargets else headerTargets
+        }
         val gridState = rememberLazyGridState()
         val scope = rememberCoroutineScope()
-        var activeLetter by remember { mutableStateOf<Char?>(null) }
+        // @author bomo 索引高亮直接由滚动位置派生（每帧同步，无 LaunchedEffect 滞后）：
+        // 当前「完整可见第一行」所属分组字母自动点亮；点击索引只触发滚动，高亮自动跟随。
+        val firstVisibleItem by remember {
+            derivedStateOf {
+                val index = gridState.firstVisibleItemIndex
+                val offset = gridState.firstVisibleItemScrollOffset
+                if (offset > metrics.cellHeight / 2f) index + 1 else index
+            }
+        }
+        val activeIndex by remember(indexLetters, indexTargets) {
+            derivedStateOf {
+                val first = firstVisibleItem
+                var best = 0
+                for (i in indexTargets.indices) {
+                    if (indexTargets[i] <= first) best = i
+                }
+                best
+            }
+        }
+        // @author bomo 空结果防越界：过滤为空时 indexLetters 为空，activeIndex 默认 0 会越界崩溃。
+        val activeLetter = indexLetters.getOrNull(activeIndex) ?: '#'
 
         Box(
             modifier =
@@ -765,6 +902,17 @@ internal class CornerRadialOverlayView(
                         squircleEnabled = squircleEnabled,
                     )
                     .squircleSurface(color = panelColor, cornerRadius = cornerRadius)
+                    .then(
+                        if (panelEditMode) {
+                            Modifier.border(
+                                width = 1.5.dp,
+                                color = Color(0xFF9E9E9E).copy(alpha = 0.85f),
+                                shape = RoundedCornerShape(cornerRadius),
+                            )
+                        } else {
+                            Modifier
+                        },
+                    )
                     .pointerInput(Unit) {
                         awaitEachGesture {
                             awaitFirstDown(requireUnconsumed = false)
@@ -773,6 +921,195 @@ internal class CornerRadialOverlayView(
                         }
                     },
         ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // @author bomo 顶栏（仿系统智能侧边栏 UI）：关闭 + 搜索框。
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(PANEL_TOP_BAR_HEIGHT)
+                            .padding(
+                                start = horizontalPadding + 4.dp,
+                                end = horizontalPadding,
+                            ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // @author bomo 设置按钮（左）：单击切换编辑模式；双击恢复默认长宽及位置。
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(17.dp))
+                                .background(
+                                    if (panelEditMode) {
+                                        MiuixTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                    } else {
+                                        labelColor.copy(alpha = 0.08f)
+                                    },
+                                )
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onTap = { panelEditMode = !panelEditMode },
+                                        onDoubleTap = { resetPanelGeometry() },
+                                    )
+                                },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Settings,
+                            contentDescription = "设置",
+                            modifier = Modifier.size(18.dp),
+                            tint =
+                                if (panelEditMode) MiuixTheme.colorScheme.primary
+                                else labelColor.copy(alpha = 0.65f),
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    // @author bomo 搜索框：点击优先调用系统输入法（IME），
+                    // 窗口可聚焦（无 ALT_FOCUSABLE_IM）+ 焦点就绪后 showSoftInput；
+                    // IME 未激活（异常场景）时回退模块自绘字母键盘（A-Z + 删除/清空）。
+                    // 无按压高亮（indication=null），避免深色背景上出现黑色阴影。
+                    Box(
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .height(34.dp)
+                                .clip(RoundedCornerShape(17.dp))
+                                .background(labelColor.copy(alpha = 0.08f))
+                                .padding(horizontal = 12.dp)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                ) {
+                                    if (showKeyboard) showKeyboard = false
+                                    useSystemIme = true
+                                },
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        if (useSystemIme) {
+                            AndroidView(
+                                modifier = Modifier.fillMaxSize(),
+                                factory = { ctx ->
+                                    EditText(ctx).apply {
+                                        setTextColor(labelColor.toArgb())
+                                        hint = "搜索应用"
+                                        setHintTextColor(labelColor.copy(alpha = 0.4f).toArgb())
+                                        textSize = 12f
+                                        isSingleLine = true
+                                        setText(query)
+                                        setSelection(query.length)
+                                        background = null
+                                        setPadding(0, 0, 0, 0)
+                                        gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
+                                        isFocusableInTouchMode = true
+                                        requestFocus()
+                                        addTextChangedListener(
+                                            object : TextWatcher {
+                                                override fun beforeTextChanged(
+                                                    s: CharSequence?,
+                                                    start: Int,
+                                                    count: Int,
+                                                    after: Int,
+                                                ) {}
+
+                                                override fun onTextChanged(
+                                                    s: CharSequence?,
+                                                    start: Int,
+                                                    before: Int,
+                                                    count: Int,
+                                                ) {}
+
+                                                override fun afterTextChanged(e: Editable?) {
+                                                    query = e?.toString() ?: ""
+                                                }
+                                            },
+                                        )
+                                        setOnEditorActionListener { _, _, _ ->
+                                            hideIme(this)
+                                            useSystemIme = false
+                                            true
+                                        }
+                                        post {
+                                            // @author bomo 视图 attach 后立即请求焦点并唤起 IME
+                                            //（不等 onWindowFocusChanged，面板打开时窗口可能已聚焦、变化不触发）。
+                                            requestFocus()
+                                            runCatching {
+                                                val imm =
+                                                    ctx.getSystemService(Context.INPUT_METHOD_SERVICE)
+                                                        as InputMethodManager
+                                                imm.showSoftInput(this, 0)
+                                            }
+                                            // 窗口焦点变化兜底（首次 attach 后窗口获得焦点时再唤一次）。
+                                            viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
+                                                if (hasFocus) {
+                                                    runCatching {
+                                                        val imm =
+                                                            ctx.getSystemService(Context.INPUT_METHOD_SERVICE)
+                                                                as InputMethodManager
+                                                        imm.showSoftInput(this, 0)
+                                                    }
+                                                }
+                                            }
+                                            // @author bomo 兜底：IME 仍未激活则回退自绘键盘。
+                                            Handler(Looper.getMainLooper()).postDelayed({
+                                                runCatching {
+                                                    val imm =
+                                                        ctx.getSystemService(Context.INPUT_METHOD_SERVICE)
+                                                            as InputMethodManager
+                                                    if (!imm.isActive(this)) {
+                                                        useSystemIme = false
+                                                        showKeyboard = true
+                                                    }
+                                                }
+                                            }, 800L)
+                                        }
+                                    }
+                                },
+                                update = { et ->
+                                    if (et.text.toString() != query) {
+                                        et.setText(query)
+                                        et.setSelection(query.length)
+                                    }
+                                },
+                            )
+                        } else if (query.isEmpty()) {
+                            Text(
+                                text = "搜索应用",
+                                color = labelColor.copy(alpha = 0.4f),
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        } else {
+                            Text(
+                                text = query,
+                                color = labelColor,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    // @author bomo 关闭按钮（右）：与左侧设置按钮同规格（18dp 灰色图标，34dp 圆角底），保持对称。
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(17.dp))
+                                .background(labelColor.copy(alpha = 0.08f))
+                                .clickable { listener.onDismissRequested() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = "关闭",
+                            modifier = Modifier.size(18.dp),
+                            tint = labelColor.copy(alpha = 0.65f),
+                        )
+                    }
+                }
+                Box(modifier = Modifier.weight(1f)) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(metrics.columns),
                 modifier =
@@ -794,36 +1131,128 @@ internal class CornerRadialOverlayView(
                         },
                 state = gridState,
                 contentPadding =
+                    // @author bomo 索引条跟随呼出方向：左侧呼出 → 索引在左（网格右侧留白）；右侧呼出 → 索引在右。
                     PaddingValues(
-                        start = horizontalPadding,
+                        start =
+                            if (side == CornerSide.Left) {
+                                horizontalPadding + PANEL_INDEX_BAR_WIDTH
+                            } else {
+                                horizontalPadding
+                            },
                         top = verticalPadding,
-                        end = horizontalPadding + PANEL_INDEX_BAR_WIDTH,
+                        end =
+                            if (side == CornerSide.Left) {
+                                horizontalPadding
+                            } else {
+                                horizontalPadding + PANEL_INDEX_BAR_WIDTH
+                            },
                         bottom = verticalPadding,
                     ),
                 verticalArrangement = Arrangement.Top,
                 userScrollEnabled = inputEnabled,
             ) {
+                // @author bomo 空结果提示：搜索无匹配时不显示空网格（同时避免空索引导致崩溃）。
+                if (filteredApps.isEmpty() && query.isNotBlank()) {
+                    item(key = "more_panel_no_result", span = { GridItemSpan(maxLineSpan) }) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 56.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "未找到「${query.trim()}」",
+                                color = labelColor.copy(alpha = 0.5f),
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+                // @author bomo 「最近使用」区：与下方 A-Z 分组同样的格子分布，只显示两行（[RECENT_ROWS] × 列数）。
+                if (query.isEmpty() && catalog.recentApps.isNotEmpty()) {
+                    item(
+                        key = "recent_header",
+                        span = { GridItemSpan(maxLineSpan) },
+                    ) {
+                        // @author bomo 「最近使用」标题行：与字母组标题同样式。
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = horizontalPadding + 4.dp)
+                                    .padding(vertical = 6.dp),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            Text(
+                                text = "最近使用",
+                                color = labelColor.copy(alpha = 0.75f),
+                                fontSize = labelSize,
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 0.sp,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                    items(
+                        items = catalog.recentApps.take(metrics.columns * RECENT_ROWS),
+                        key = { entry -> entry.component.flattenToShortString() + "_recent" },
+                    ) { entry ->
+                        Column(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(cellHeight)
+                                    .clickable(enabled = inputEnabled) {
+                                        listener.onAppCommitted(entry)
+                                    },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Image(
+                                bitmap = panelImages[entry.component] ?: entry.icon.asImageBitmap(),
+                                contentDescription = null,
+                                modifier = Modifier.size(iconSize),
+                                filterQuality = FilterQuality.High,
+                            )
+                            Spacer(modifier = Modifier.height(labelGap))
+                            Text(
+                                text = entry.label,
+                                modifier = Modifier.fillMaxWidth(),
+                                color = labelColor,
+                                fontSize = labelSize,
+                                letterSpacing = 0.sp,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
                 grouped.forEach { (letter, apps) ->
                     item(
                         key = "more_panel_header_$letter",
                         span = { GridItemSpan(maxLineSpan) },
                     ) {
-                        // @author bomo 字母组标题行：左上角显示首字母。
-                        Text(
-                            text = letter.toString(),
+                        // @author bomo 字母组标题行：左上角显示首字母；上下留间距增大组与组之间的距离。
+                        Box(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
-                                    .padding(
-                                        start = horizontalPadding + 4.dp,
-                                        top = 8.dp,
-                                        bottom = 4.dp,
-                                    ),
-                            color = labelColor.copy(alpha = 0.75f),
-                            fontSize = labelSize,
-                            fontWeight = FontWeight.SemiBold,
-                            letterSpacing = 0.sp,
-                        )
+                                    .padding(start = horizontalPadding + 4.dp)
+                                    .padding(vertical = 6.dp),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            Text(
+                                text = letter.toString(),
+                                color = labelColor.copy(alpha = 0.75f),
+                                fontSize = labelSize,
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 0.sp,
+                                maxLines = 1,
+                            )
+                        }
                     }
                     items(
                         items = apps,
@@ -866,29 +1295,62 @@ internal class CornerRadialOverlayView(
                 BoxWithConstraints(
                     modifier =
                         Modifier
-                            .align(Alignment.CenterEnd)
+                            // @author bomo 索引条跟随呼出方向：左侧呼出 → 靠左；右侧呼出 → 靠右。
+                            .align(
+                                if (side == CornerSide.Left) {
+                                    Alignment.CenterStart
+                                } else {
+                                    Alignment.CenterEnd
+                                },
+                            )
                             .fillMaxHeight()
                             .width(PANEL_INDEX_BAR_WIDTH),
                 ) {
                     val barHeight = constraints.maxHeight.toFloat()
+                    // @author bomo 以默认高度（16dp 间距可容纳全部字母）为标准：
+                    // 高度增加 → 间距均匀增大填满（全部显示）；高度减小 → 保持 16dp 间距、减少可见数量。
+                    val minStride = 16f * density.density
+                    val vPadPx = verticalPadding.value * density.density
+                    val availableHeight = (barHeight - vPadPx * 2).coerceAtLeast(1f)
+                    val fullCount = indexLetters.size.coerceAtLeast(1)
+                    val stride =
+                        if (availableHeight >= fullCount * minStride) {
+                            availableHeight / fullCount
+                        } else {
+                            minStride
+                        }
+                    val visibleCount =
+                        if (stride >= minStride) fullCount else (availableHeight / stride).toInt().coerceAtLeast(1)
+                    // @author bomo 高度不足时索引条为「跟随当前字母滑动」的窗口：
+                    // 当前字母居中，保证滚动到底部也能看到/点到对应字母。
+                    val activeIndex = activeLetter?.let { indexLetters.indexOf(it) } ?: 0
+                    val startIndex =
+                        if (visibleCount < fullCount) {
+                            (activeIndex - visibleCount / 2).coerceIn(0, fullCount - visibleCount)
+                        } else {
+                            0
+                        }
                     val textMeasurer = rememberTextMeasurer()
                     val primaryColor = MiuixTheme.colorScheme.primary
+                    // @author bomo 当前分组字母放大一点（activeLetter 高亮 + 12sp，其余 10sp）。
                     val layouts: List<TextLayoutResult> =
-                        remember(letters, activeLetter, primaryColor, labelColor) {
-                            letters.map { letter ->
+                        remember(indexLetters, activeLetter, primaryColor, labelColor, startIndex, visibleCount) {
+                            (startIndex until startIndex + visibleCount).map { i ->
+                                val letter = indexLetters[i]
+                                val active = letter == activeLetter
                                 textMeasurer.measure(
                                     AnnotatedString(letter.toString()),
                                     style =
                                         TextStyle(
                                             color =
-                                                if (letter == activeLetter) {
+                                                if (active) {
                                                     primaryColor
                                                 } else {
                                                     labelColor.copy(alpha = 0.65f)
                                                 },
-                                            fontSize = 10.sp,
+                                            fontSize = if (active) 12.sp else 10.sp,
                                             fontWeight =
-                                                if (letter == activeLetter) FontWeight.SemiBold
+                                                if (active) FontWeight.SemiBold
                                                 else FontWeight.Medium,
                                         ),
                                 )
@@ -899,20 +1361,39 @@ internal class CornerRadialOverlayView(
                             Modifier
                                 .fillMaxSize()
                                 .padding(
-                                    end = 2.dp,
+                                    // @author bomo 索引靠边方向跟随呼出方向：靠左 → start 留白；靠右 → end 留白。
+                                    start = if (side == CornerSide.Left) 2.dp else 0.dp,
+                                    end = if (side == CornerSide.Left) 0.dp else 2.dp,
                                     top = verticalPadding,
                                     bottom = verticalPadding,
                                 )
-                                .pointerInput(letters) {
+                                .pointerInput(indexLetters, indexTargets, visibleCount, stride, startIndex, metrics) {
                                     if (!inputEnabled) return@pointerInput
+                                    // @author bomo 点击/滑动索引滚动（rel35 组合，方向跟随版手感）：
+                                    // 1) 距离远（含从下往上）时先瞬时跳到目标前一段，让目标附近 item 先渲染，
+                                    //    避免 LazyGrid 长距离预估高度修正导致的分段滚动；
+                                    // 2) 再以短距离动画精确到位（目标已渲染、无预估误差）；
+                                    // 3) 兜底：动画后若首个可见 item 仍不是目标，瞬时校正一次保证对齐。
+                                    suspend fun smoothScrollTo(target: Int) {
+                                        val padPx = PANEL_INDEX_TARGET_PADDING_DP.value * density.density
+                                        val preTarget = (target - PANEL_INDEX_PRE_RENDER_ITEMS).coerceAtLeast(0)
+                                        if (abs(gridState.firstVisibleItemIndex - target) > PANEL_INDEX_PRE_RENDER_ITEMS * 2) {
+                                            gridState.scrollToItem(preTarget, 0)
+                                        }
+                                        gridState.animateScrollToItem(target, padPx.toInt())
+                                        if (gridState.firstVisibleItemIndex != target) {
+                                            gridState.scrollToItem(target, padPx.toInt())
+                                        }
+                                    }
+                                    fun jumpTo(index: Int) {
+                                        val target = indexTargets[index]
+                                        scope.launch { smoothScrollTo(target) }
+                                    }
                                     fun selectAt(y: Float) {
                                         val index =
-                                            ((y / barHeight) * letters.size).toInt().coerceIn(0, letters.size - 1)
-                                        val letter = letters[index]
-                                        if (letter != activeLetter) {
-                                            activeLetter = letter
-                                            scope.launch { gridState.scrollToItem(headerTargets[index]) }
-                                        }
+                                            (startIndex + ((y - vPadPx) / stride).toInt())
+                                                .coerceIn(startIndex, startIndex + visibleCount - 1)
+                                        jumpTo(index)
                                     }
                                     detectDragGestures(
                                         onDragStart = { offset -> selectAt(offset.y) },
@@ -922,22 +1403,32 @@ internal class CornerRadialOverlayView(
                                         },
                                     )
                                 }
-                                .pointerInput(letters) {
+                                .pointerInput(indexLetters, indexTargets, visibleCount, stride, startIndex, metrics) {
                                     if (!inputEnabled) return@pointerInput
+                                    // @author bomo 点击索引：同样走 smoothScrollTo（条件预跳 + 短距动画 + 兜底校正）。
+                                    suspend fun smoothScrollTo(target: Int) {
+                                        val padPx = PANEL_INDEX_TARGET_PADDING_DP.value * density.density
+                                        val preTarget = (target - PANEL_INDEX_PRE_RENDER_ITEMS).coerceAtLeast(0)
+                                        if (abs(gridState.firstVisibleItemIndex - target) > PANEL_INDEX_PRE_RENDER_ITEMS * 2) {
+                                            gridState.scrollToItem(preTarget, 0)
+                                        }
+                                        gridState.animateScrollToItem(target, padPx.toInt())
+                                        if (gridState.firstVisibleItemIndex != target) {
+                                            gridState.scrollToItem(target, padPx.toInt())
+                                        }
+                                    }
                                     detectTapGestures { offset ->
                                         val index =
-                                            ((offset.y / barHeight) * letters.size).toInt().coerceIn(0, letters.size - 1)
-                                        val letter = letters[index]
-                                        if (letter != activeLetter) {
-                                            activeLetter = letter
-                                            scope.launch { gridState.scrollToItem(headerTargets[index]) }
-                                        }
+                                            (startIndex + ((offset.y - vPadPx) / stride).toInt())
+                                                .coerceIn(startIndex, startIndex + visibleCount - 1)
+                                        val target = indexTargets[index]
+                                        scope.launch { smoothScrollTo(target) }
                                     }
                                 },
                     ) {
                         Canvas(modifier = Modifier.fillMaxSize()) {
-                            layouts.forEachIndexed { index, layout ->
-                                val centerY = barHeight * (index + 0.5f) / layouts.size
+                            layouts.forEachIndexed { i, layout ->
+                                val centerY = vPadPx + stride * i + stride / 2f
                                 drawText(
                                     textLayoutResult = layout,
                                     topLeft =
@@ -950,12 +1441,304 @@ internal class CornerRadialOverlayView(
                         }
                     }
                 }
+                }
+                }
             }
+            // @author bomo 面板编辑模式：中心四向箭头（移动位置）+ 右下角手柄（调整长宽）。
+            if (panelEditMode) {
+                // 中心四向箭头：按压拖动 → 面板水平/垂直偏移（与设置页「偏移」滑条同步）。
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.Center)
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.38f))
+                            .pointerInput(Unit) {
+                                detectDragGestures(
+                                    onDragEnd = { commitPanelGeometry() },
+                                    onDragCancel = { commitPanelGeometry() },
+                                ) { change, dragAmount ->
+                                    change.consume()
+                                    val densityPx = density.density
+                                    val baseBounds =
+                                        basePanelMetrics?.panel?.bounds ?: return@detectDragGestures
+                                    val baseWidth = baseBounds.right - baseBounds.left
+                                    val baseHeight = baseBounds.bottom - baseBounds.top
+                                    val width = baseWidth * morePanelWidthPercent / 100f
+                                    val height = baseHeight * morePanelHeightPercent / 100f
+                                    // @author bomo 动态可移动范围：面板顶可达屏顶边距、底可达屏底边距，
+                                    // 修复面板缩小后无法上移（固定 ±160dp 钳制不够）。
+                                    val screenW = resources.displayMetrics.widthPixels.toFloat()
+                                    val screenH = resources.displayMetrics.heightPixels.toFloat()
+                                    val marginPx = 8f * densityPx
+                                    val centerX = (baseBounds.left + baseBounds.right) / 2f
+                                    val minOffsetXDp =
+                                        ((marginPx - centerX + width / 2f) / densityPx).roundToInt()
+                                    val maxOffsetXDp =
+                                        ((screenW - marginPx - centerX + width / 2f) / densityPx).roundToInt()
+                                    val minOffsetYDp =
+                                        ((marginPx - baseBounds.bottom + height) / densityPx).roundToInt()
+                                    val maxOffsetYDp =
+                                        ((screenH - marginPx - baseBounds.bottom) / densityPx).roundToInt()
+                                    morePanelOffsetXDp =
+                                        (morePanelOffsetXDp + (dragAmount.x / densityPx).roundToInt())
+                                            .coerceIn(minOffsetXDp, maxOffsetXDp)
+                                    morePanelOffsetYDp =
+                                        (morePanelOffsetYDp + (dragAmount.y / densityPx).roundToInt())
+                                            .coerceIn(minOffsetYDp, maxOffsetYDp)
+                                    refreshPanelMetrics()
+                                }
+                            },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.OpenWith,
+                        contentDescription = "移动面板",
+                        modifier = Modifier.size(24.dp),
+                        tint = Color.White,
+                    )
+                }
+                // 右下角手柄：按压拖动 → 面板宽/高百分比（与设置页「宽度/高度」滑条同步）。
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 10.dp, bottom = 10.dp)
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.38f))
+                            .pointerInput(Unit) {
+                                detectDragGestures(
+                                    onDragEnd = { commitPanelGeometry() },
+                                    onDragCancel = { commitPanelGeometry() },
+                                ) { change, dragAmount ->
+                                    change.consume()
+                                    val baseBounds =
+                                        basePanelMetrics?.panel?.bounds ?: return@detectDragGestures
+                                    val baseWidth = baseBounds.right - baseBounds.left
+                                    val baseHeight = baseBounds.bottom - baseBounds.top
+                                    val densityPx = density.density
+                                    val oldWidthPercent = morePanelWidthPercent
+                                    val oldHeightPercent = morePanelHeightPercent
+                                    morePanelWidthPercent =
+                                        ((baseWidth * oldWidthPercent / 100f + dragAmount.x) /
+                                            baseWidth * 100f)
+                                            .roundToInt()
+                                            .coerceIn(
+                                                ModulePreferences.MIN_MORE_PANEL_WIDTH_PERCENT,
+                                                ModulePreferences.MAX_MORE_PANEL_WIDTH_PERCENT,
+                                            )
+                                    morePanelHeightPercent =
+                                        ((baseHeight * oldHeightPercent / 100f + dragAmount.y) /
+                                            baseHeight * 100f)
+                                            .roundToInt()
+                                            .coerceIn(
+                                                ModulePreferences.MIN_MORE_PANEL_HEIGHT_PERCENT,
+                                                ModulePreferences.MAX_MORE_PANEL_HEIGHT_PERCENT,
+                                            )
+                                    // @author bomo 移动边跟随手指：宽度右边缘跟手（左边缘不动 → offsetX 补偿半量）、
+                                    // 高度底边缘跟手（顶边缘不动 → offsetY 补偿全量）。
+                                    val widthDeltaPx =
+                                        baseWidth * (morePanelWidthPercent - oldWidthPercent) / 100f
+                                    val heightDeltaPx =
+                                        baseHeight * (morePanelHeightPercent - oldHeightPercent) / 100f
+                                    // @author bomo 补偿后偏移的动态范围：面板缩小后允许继续上移/左移到屏边界。
+                                    val curWidth = baseWidth * morePanelWidthPercent / 100f
+                                    val curHeight = baseHeight * morePanelHeightPercent / 100f
+                                    val screenW = resources.displayMetrics.widthPixels.toFloat()
+                                    val screenH = resources.displayMetrics.heightPixels.toFloat()
+                                    val marginPx = 8f * densityPx
+                                    val centerX = (baseBounds.left + baseBounds.right) / 2f
+                                    val minOffsetXDp =
+                                        ((marginPx - centerX + curWidth / 2f) / densityPx).roundToInt()
+                                    val maxOffsetXDp =
+                                        ((screenW - marginPx - centerX + curWidth / 2f) / densityPx).roundToInt()
+                                    val minOffsetYDp =
+                                        ((marginPx - baseBounds.bottom + curHeight) / densityPx).roundToInt()
+                                    val maxOffsetYDp =
+                                        ((screenH - marginPx - baseBounds.bottom) / densityPx).roundToInt()
+                                    morePanelOffsetXDp =
+                                        (morePanelOffsetXDp + (widthDeltaPx / 2f / densityPx).roundToInt())
+                                            .coerceIn(minOffsetXDp, maxOffsetXDp)
+                                    morePanelOffsetYDp =
+                                        (morePanelOffsetYDp + (heightDeltaPx / densityPx).roundToInt())
+                                            .coerceIn(minOffsetYDp, maxOffsetYDp)
+                                    refreshPanelMetrics()
+                                }
+                            },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.FitScreen,
+                        contentDescription = "调整大小",
+                        modifier = Modifier.size(22.dp),
+                        tint = Color.White,
+                    )
+                }
+            }
+            // @author bomo 键盘覆盖式浮在面板底部：不参与 Column 布局，
+            // 因此弹出键盘不会压缩内容区（右侧 A-Z 索引条保持原尺寸）。
+            if (showKeyboard) {
+                PanelKeyboard(
+                    query = query,
+                    onKey = { ch -> query += ch },
+                    onBackspace = { query = query.dropLast(1) },
+                    onClear = { query = "" },
+                    onDone = { showKeyboard = false },
+                    labelColor = labelColor,
+                    primaryColor = MiuixTheme.colorScheme.primary,
+                    panelColor = panelColor,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+            }
+        }
+    }
+
+    /** @author bomo 自绘搜索键盘：system_server 窗口无法连接输入法，用模块自绘字母键盘输入。 */
+    @Composable
+    private fun PanelKeyboard(
+        query: String,
+        onKey: (Char) -> Unit,
+        onBackspace: () -> Unit,
+        onClear: () -> Unit,
+        onDone: () -> Unit,
+        labelColor: Color,
+        primaryColor: Color,
+        panelColor: Color,
+        modifier: Modifier = Modifier,
+    ) {
+        Column(
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                    .background(panelColor.copy(alpha = 0.96f))
+                    .padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().height(24.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = if (query.isEmpty()) "拼音首字母" else query,
+                    color = labelColor.copy(alpha = 0.7f),
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "清空",
+                    color = primaryColor,
+                    fontSize = 11.sp,
+                    modifier =
+                        Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onClear() }
+                            .padding(horizontal = 5.dp, vertical = 3.dp),
+                )
+                Text(
+                    text = "完成",
+                    color = primaryColor,
+                    fontSize = 11.sp,
+                    modifier =
+                        Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onDone() }
+                            .padding(horizontal = 7.dp, vertical = 3.dp),
+                )
+            }
+            listOf("ABCDEF", "GHIJKL", "MNOPQR", "STUVWX").forEach { row ->
+                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                    row.forEach { ch ->
+                        PanelKeyboardKey(
+                            text = ch.toString(),
+                            labelColor = labelColor,
+                            primaryColor = primaryColor,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onKey(ch) },
+                        )
+                    }
+                }
+            }
+            // 最后一行：Y / Z 各一列，删除占剩余四列（宽删除键，避免一排四个重复删除）。
+            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                PanelKeyboardKey(
+                    text = "Y",
+                    labelColor = labelColor,
+                    primaryColor = primaryColor,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onKey('Y') },
+                )
+                PanelKeyboardKey(
+                    text = "Z",
+                    labelColor = labelColor,
+                    primaryColor = primaryColor,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onKey('Z') },
+                )
+                PanelKeyboardKey(
+                    text = "删除",
+                    labelColor = labelColor,
+                    primaryColor = primaryColor,
+                    modifier = Modifier.weight(4f),
+                    onClick = onBackspace,
+                )
+            }
+        }
+    }
+
+    @Composable
+    private fun PanelKeyboardKey(
+        text: String,
+        labelColor: Color,
+        primaryColor: Color,
+        modifier: Modifier,
+        onClick: () -> Unit,
+    ) {
+        Box(
+            modifier =
+                modifier
+                    .padding(horizontal = 2.dp)
+                    .height(30.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(labelColor.copy(alpha = 0.12f))
+                    .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = text,
+                color = labelColor,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+            )
         }
     }
 
     /** @author bomo 分组字母：ASCII 字母取大写，中文按拼音首字母（见 [InitialIndex]）。 */
     private fun initialOf(label: String): Char = InitialIndex.initialOf(label)
+
+    /** @author bomo 隐藏系统输入法（IME 完成/面板关闭时调用）。 */
+    private fun hideIme(view: android.view.View) {
+        runCatching {
+            val imm = view.context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.hideSoftInputFromWindow(view.windowToken, 0)
+        }
+    }
+
+    /** @author bomo 应用名称的拼音首字母序列（用于搜索匹配，如「微信」→ "WX"、「YouTube」→ "YOUTUBE"）。 */
+    private fun pinyinInitialsOf(label: String): String =
+        buildString {
+            label.forEach { ch ->
+                val code = ch.code
+                when {
+                    code in 'A'.code..'Z'.code -> append(ch)
+                    code in 'a'.code..'z'.code -> append((code - 32).toChar())
+                    code > 0xFF -> InitialIndex.pinyinInitialOf(ch)?.let(::append)
+                }
+            }
+        }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
@@ -1054,7 +1837,9 @@ internal class CornerRadialOverlayView(
                 anchorOnLeft = side == CornerSide.Left,
                 radiusScale = radialRadiusScale,
             )
-        metricsState.value = metrics
+        basePanelMetrics = metrics
+        metricsState.value =
+            applyMorePanelCustomization(metrics, resources.displayMetrics.density)
         // 双圈：外圈 = 前 catalog.outerCount 个应用（含「更多」槽），其余进内圈。
         val outerLayout =
             RadialGeometry.layout(
@@ -1109,6 +1894,87 @@ internal class CornerRadialOverlayView(
             index == outerCount -> null
             else -> outerCount + (index - outerCount - 1)
         }
+    }
+
+    /**
+     * @author bomo 自绘「更多」面板自定义几何：按设置覆盖宽度/高度百分比、圆角与水平/垂直偏移。
+     * 全部为默认值时原样返回（保持自适应几何）。宽度以面板中心为锚缩放，高度以底边为锚缩放，
+     * 偏移在此基础上平移整个面板；圆角 0 表示跟随自适应几何。
+     */
+    private fun applyMorePanelCustomization(metrics: AdaptiveOverlayMetrics, density: Float): AdaptiveOverlayMetrics {
+        if (morePanelWidthPercent == ModulePreferences.DEFAULT_MORE_PANEL_WIDTH_PERCENT &&
+            morePanelHeightPercent == ModulePreferences.DEFAULT_MORE_PANEL_HEIGHT_PERCENT &&
+            morePanelCornerRadiusDp == ModulePreferences.DEFAULT_MORE_PANEL_CORNER_RADIUS_DP &&
+            morePanelOffsetXDp == ModulePreferences.DEFAULT_MORE_PANEL_OFFSET_X_DP &&
+            morePanelOffsetYDp == ModulePreferences.DEFAULT_MORE_PANEL_OFFSET_Y_DP
+        ) {
+            return metrics
+        }
+        val base = metrics.panel.bounds
+        val baseWidth = base.right - base.left
+        val baseHeight = base.bottom - base.top
+        // @author bomo 面板长宽可调上限参考手机分辨率：尺寸不超出屏幕（各留 ~8dp 边距）。
+        val screenW = resources.displayMetrics.widthPixels.toFloat()
+        val screenH = resources.displayMetrics.heightPixels.toFloat()
+        val maxPanelW = (screenW - 8f * density * 2).coerceAtLeast(baseWidth)
+        val maxPanelH = (screenH - 8f * density * 2).coerceAtLeast(baseHeight)
+        val width = (baseWidth * morePanelWidthPercent / 100f).coerceAtMost(maxPanelW)
+        val height = (baseHeight * morePanelHeightPercent / 100f).coerceAtMost(maxPanelH)
+        val centerX = (base.left + base.right) / 2f
+        val offsetX = morePanelOffsetXDp * density
+        val offsetY = morePanelOffsetYDp * density
+        val left = centerX - width / 2f + offsetX
+        val top = base.bottom - height + offsetY
+        // @author bomo 面板宽度变化 → 列数自适应（单格最小宽度不变，格数随宽度增减）。
+        val panelColumns =
+            kotlin.math.min(
+                catalog.panelApps.size.coerceAtLeast(1),
+                kotlin.math.floor((width - metrics.panel.contentHorizontalPadding * 2) / metrics.panel.minCellWidth)
+                    .toInt()
+                    .coerceAtLeast(1),
+            )
+        return metrics.copy(
+            panel =
+                metrics.panel.copy(
+                    bounds = OverlayBounds(left, top, left + width, top + height),
+                    cornerRadius =
+                        if (morePanelCornerRadiusDp > 0) {
+                            morePanelCornerRadiusDp * density
+                        } else {
+                            metrics.panel.cornerRadius
+                        },
+                    columns = panelColumns,
+                ),
+        )
+    }
+
+    /**
+     * @author bomo 以定制前的自适应几何为基准重算面板几何（拖拽调整过程中实时调用）。
+     * 不累积：每次都以 [basePanelMetrics] 为输入，仅由当前字段（宽/高百分比 + 偏移）决定结果。
+     */
+    private fun refreshPanelMetrics() {
+        val base = basePanelMetrics ?: return
+        metricsState.value = applyMorePanelCustomization(base, resources.displayMetrics.density)
+    }
+
+    /** @author bomo 面板拖拽松手：把当前几何回调给上层落盘（同步设置页「更多面板自定义」）。 */
+    private fun commitPanelGeometry() {
+        listener.onMorePanelGeometryChanged(
+            morePanelWidthPercent,
+            morePanelHeightPercent,
+            morePanelOffsetXDp,
+            morePanelOffsetYDp,
+        )
+    }
+
+    /** @author bomo 恢复「更多」面板默认长宽及位置（双击顶栏设置按钮触发），并落盘同步。 */
+    private fun resetPanelGeometry() {
+        morePanelWidthPercent = ModulePreferences.DEFAULT_MORE_PANEL_WIDTH_PERCENT
+        morePanelHeightPercent = ModulePreferences.DEFAULT_MORE_PANEL_HEIGHT_PERCENT
+        morePanelOffsetXDp = ModulePreferences.DEFAULT_MORE_PANEL_OFFSET_X_DP
+        morePanelOffsetYDp = ModulePreferences.DEFAULT_MORE_PANEL_OFFSET_Y_DP
+        refreshPanelMetrics()
+        commitPanelGeometry()
     }
 
     private fun updateGestureFromLatestPoint() {
@@ -1354,8 +2220,18 @@ internal class CornerRadialOverlayView(
         const val SELECTION_RING_ENLARGE_SCALE = 1.3f
         /** @author bomo 「更多」宫格格心间距系数（<1 = 四格更紧凑；1 = 铺满圆盘）。 */
         const val MORE_GRID_COMPACT_FRACTION = 0.72f
+        /** @author bomo 「更多」面板顶栏（关闭 + 搜索框）高度。 */
+        val PANEL_TOP_BAR_HEIGHT = 52.dp
         /** @author bomo 「更多」面板右侧 A-Z 首字母索引条宽度。 */
         val PANEL_INDEX_BAR_WIDTH = 22.dp
+        /** @author bomo 「更多」面板顶部「最近使用」区行数（两行，格子与 A-Z 分组一致）。 */
+        const val RECENT_ROWS = 2
+        /** @author bomo 「更多」面板图标放大系数：仅放大图标尺寸，不影响格子布局。 */
+        const val PANEL_ICON_SIZE_BOOST = 1.3f
+        /** @author bomo 点击索引跳转时预渲染的目标前移格数：先瞬时跳到附近再短距离动画，避免分段滚动。 */
+        const val PANEL_INDEX_PRE_RENDER_ITEMS = 8
+        /** @author bomo 索引点击后目标标题距内容区顶的留白：避免标题顶死贴边，保留原版（rel35）手感。 */
+        val PANEL_INDEX_TARGET_PADDING_DP = 8.dp
         /** @author bomo 系统强调蓝解析失败时的回退色（ColorOS 风格蓝）。 */
         val FALLBACK_SELECTION_RING_COLOR = Color(0xFF0A84FF)
         /** @author bomo 扇形半径缩放系数的钳制区间（对应设置百分比 60% ~ 150%）。 */

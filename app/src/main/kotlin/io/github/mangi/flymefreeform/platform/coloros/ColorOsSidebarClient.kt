@@ -264,6 +264,74 @@ internal class ColorOsSidebarClient(
         apply(request, request.session.cancel(allowFallback = false))
     }
 
+    /**
+     * @author bomo 呼出系统原生智能侧边栏（ColorOSEdgePanel）。
+     *
+     * 模块自建「全部应用」面板（白屏/状态机缺失）已弃用；此处不再 bind 模块 UIService，
+     * 改为模拟一次与用户手动呼出完全一致的「屏幕边缘横滑」手势 —— 由系统自身的
+     * 手势检测服务弹出原生侧边栏面板（原生渲染、外观与系统呼出完全一致）。
+     * 本方法运行于 system_server 进程，InputManager 具备 INJECT_EVENTS 权限。
+     *
+     * @param leftSide true = 左边缘手势，false = 右边缘手势
+     * @return 手势注入是否成功提交（面板是否真正弹出由系统决定）
+     */
+    fun openSystemSidebar(leftSide: Boolean): Boolean =
+        runCatching {
+            val metrics = context.resources.displayMetrics
+            val width = metrics.widthPixels
+            val height = metrics.heightPixels
+            val y = height * 0.5f
+            val edgeX = if (leftSide) 0f else width.toFloat()
+            // @author bomo 快速横滑（短距离+快速度）让系统按「默认展开」尺寸弹出面板，
+            // 与用户手动呼出一致；慢速/长距拖拽会被系统识别为自由拖展（面板更高更靠上）。
+            val travel = 90f
+            val steps = 6
+            val downTime = SystemClock.uptimeMillis()
+            val inputManagerClass =
+                Class.forName("android.hardware.input.InputManager")
+            val inputManager = inputManagerClass.getMethod("getInstance").invoke(null)
+            val inject =
+                inputManagerClass.getMethod(
+                    "injectInputEvent",
+                    android.view.InputEvent::class.java,
+                    Int::class.javaPrimitiveType,
+                )
+            val asyncMode = 2 // InputManager.INJECT_INPUT_EVENT_MODE_ASYNC
+            fun motion(action: Int, x: Float, delayMs: Long) {
+                val event =
+                    android.view.MotionEvent.obtain(
+                        downTime,
+                        SystemClock.uptimeMillis(),
+                        action,
+                        x,
+                        y,
+                        1f,
+                        1f,
+                        0,
+                        1f,
+                        1f,
+                        0,
+                        0,
+                    )
+                event.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+                // displayId 默认即主屏（0），无需显式设置（setDisplayId 在编译 SDK 中不可见）
+                inject.invoke(inputManager, event, asyncMode)
+                event.recycle()
+                if (delayMs > 0L) Thread.sleep(delayMs)
+            }
+            motion(android.view.MotionEvent.ACTION_DOWN, edgeX, 15L)
+            for (step in 1..steps) {
+                val x = if (leftSide) travel * step / steps else width - travel * step / steps
+                motion(android.view.MotionEvent.ACTION_MOVE, x, 6L)
+            }
+            motion(android.view.MotionEvent.ACTION_UP, if (leftSide) travel else width - travel, 0L)
+            log(Log.INFO, "SYSTEM_SIDEBAR_GESTURE_INJECTED side=$leftSide w=$width h=$height", null)
+            true
+        }.getOrElse { error ->
+            log(Log.WARN, "SYSTEM_SIDEBAR_GESTURE_FAILED", error)
+            false
+        }
+
     private fun prepareAndBind(request: Request) {
         val userId = ActivityManager::class.java.getMethod("getCurrentUser").invoke(null) as Int
         val user = UserHandle::class.java.getMethod("of", Int::class.javaPrimitiveType).invoke(null, userId) as UserHandle

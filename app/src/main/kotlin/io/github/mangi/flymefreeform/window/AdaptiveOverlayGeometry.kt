@@ -55,6 +55,8 @@ internal data class PanelVisualMetrics(
     val topPadding: Float,
     val cornerRadius: Float,
     val maxScroll: Float,
+    /** @author bomo 单格最小宽度（自适应列数的单位宽度，用于面板宽度变化时重算列数）。 */
+    val minCellWidth: Float,
 ) {
     /** 只返回当前视口及相邻缓冲行，避免滚动时遍历完整应用目录。 */
     fun visibleItemRange(itemCount: Int, scroll: Float): IntRange {
@@ -190,6 +192,7 @@ internal object AdaptiveOverlayGeometry {
                     topPadding = verticalPadding,
                     cornerRadius = cornerRadius,
                     maxScroll = (naturalPanelHeight - panelHeight).coerceAtLeast(0f),
+                    minCellWidth = minimumCellWidth,
                 ),
         )
     }
@@ -214,6 +217,7 @@ internal object AdaptiveOverlayGeometry {
     private const val PANEL_LABEL_LINE_HEIGHT_FRACTION = 1.15f
     private const val PANEL_ICON_ROW_FRACTION = 1.78f
     private const val PANEL_VERTICAL_PADDING_FRACTION = 0.18f
-    private const val PANEL_RADIUS_HEIGHT_FRACTION = 1.82f
+    /** @author bomo 默认面板高度系数：2.1 保证 A-Z（27 个索引字母 × 16dp）在默认高度下完整显示。 */
+    private const val PANEL_RADIUS_HEIGHT_FRACTION = 2.1f
     private const val PANEL_CORNER_FRACTION = 0.80f
 }

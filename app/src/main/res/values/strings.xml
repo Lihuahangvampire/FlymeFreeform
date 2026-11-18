@@ -54,6 +54,17 @@
     <string name="radial_radius_summary">扇形外圈与内圈同心缩放；调整后下次呼出生效</string>
     <string name="selection_ring_width_title">选中圈厚度</string>
     <string name="selection_ring_width_summary">选中应用的圈描边粗细；调整后下次呼出生效</string>
+    <string name="more_panel_width_title">「更多」面板宽度</string>
+    <string name="more_panel_width_summary">自绘「更多」面板的宽度；调整后下次打开面板生效</string>
+    <string name="more_panel_custom_card_title">更多面板自定义</string>
+    <string name="more_panel_height_title">「更多」面板高度</string>
+    <string name="more_panel_height_summary">自绘「更多」面板的高度；调整后下次打开面板生效</string>
+    <string name="more_panel_corner_title">「更多」面板圆角</string>
+    <string name="more_panel_corner_summary">面板四角圆润程度（0 跟随系统）；调整后下次打开面板生效</string>
+    <string name="more_panel_offset_x_title">「更多」面板水平位置</string>
+    <string name="more_panel_offset_x_summary">左右平移面板；负值靠左、正值靠右，0 为自适应</string>
+    <string name="more_panel_offset_y_title">「更多」面板垂直位置</string>
+    <string name="more_panel_offset_y_summary">上下平移面板；负值向下、正值向上，0 为自适应</string>
     <string name="selection_ring_color_title">选中圈颜色</string>
     <string name="selection_ring_color_summary">选中应用的圈颜色；调整后下次呼出生效</string>
     <string name="selection_ring_color_system">跟随系统</string>

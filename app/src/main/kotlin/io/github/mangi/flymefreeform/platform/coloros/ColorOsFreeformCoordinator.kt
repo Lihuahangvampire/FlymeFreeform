@@ -383,10 +383,14 @@ internal class ColorOsFreeformCoordinator(
     ) {
         removeOverlay()
         morePanelActive = false
-        val params = createOverlayParams(focusable = false)
+        // @author bomo 面板窗口可聚焦：搜索框需要连接系统输入法（IME）。
+        val params = createOverlayParams(focusable = true)
         var view: CornerRadialOverlayView? = null
         try {
             view = CornerRadialOverlayView(context, this)
+            // @author bomo 面板拖拽几何以 Settings.Global 为真源（拖拽松手写入），
+            // 每次呼出读取覆盖本地设置值，保证「记住拖拽位置、下次直接显示」。
+            val panelGeo = SharedSettings.readMorePanelGeometry(context)
             view.begin(
                 side = side,
                 catalog = catalogSnapshot,
@@ -395,6 +399,11 @@ internal class ColorOsFreeformCoordinator(
                 radiusScale = lastSettings.radialRadiusPercent / 100f,
                 selectionRingWidthScale = lastSettings.selectionRingWidthPercent / 100f,
                 selectionRingColorArgb = lastSettings.selectionRingColorArgb,
+                morePanelWidthPercent = panelGeo?.get(0) ?: lastSettings.morePanelWidthPercent,
+                morePanelHeightPercent = panelGeo?.get(1) ?: lastSettings.morePanelHeightPercent,
+                morePanelCornerRadiusDp = lastSettings.morePanelCornerRadiusDp,
+                morePanelOffsetXDp = panelGeo?.get(2) ?: lastSettings.morePanelOffsetXDp,
+                morePanelOffsetYDp = panelGeo?.get(3) ?: lastSettings.morePanelOffsetYDp,
             )
             overlay = view
             windowManager.addView(view, params)
@@ -620,12 +629,25 @@ internal class ColorOsFreeformCoordinator(
         morePanelActive = true
         activeEnvironmentApproved = false
         gestureEngine.cancel()
-        // @author bomo 「更多」直接打开自建应用面板（含按首字母索引的应用选择），
-        // 不再转发给 ColorOS 原厂智能侧边栏（系统界面无法加 A-Z 索引）。
+        // @author bomo 自绘「更多」面板（A-Z 分组 + 顶栏搜索 + 自定义几何）。
+        // 系统原生侧边栏注入（手势模拟/自建窗口）均已弃用。
         if (overlay === view && lastSettings.enabled && isGestureEnvironmentAllowed()) {
             view.retainBackdropForPanel()
         }
         showBuiltInMorePanel(view)
+    }
+
+    /**
+     * @author bomo 自绘「更多」面板拖拽几何（宽/高百分比 + 偏移 dp）松手回调。
+     * 写入 Settings.Global（跨进程实时通道），模块 App 侧监听后同步设置页滑条。
+     */
+    override fun onMorePanelGeometryChanged(
+        widthPercent: Int,
+        heightPercent: Int,
+        offsetXDp: Int,
+        offsetYDp: Int,
+    ) {
+        SharedSettings.writeMorePanelGeometry(context, widthPercent, heightPercent, offsetXDp, offsetYDp)
     }
 
     private fun showBuiltInMorePanel(view: CornerRadialOverlayView) {
@@ -651,10 +673,12 @@ internal class ColorOsFreeformCoordinator(
     }
 
     private fun createOverlayParams(focusable: Boolean): WindowManager.LayoutParams {
-        // 非聚焦窗不带 ALT 时位于输入法上方；聚焦面板则需要 ALT 保持相同层级。
+        // @author bomo 非聚焦窗带 ALT 时位于输入法上方；
+        // 聚焦面板必须去掉 ALT_FOCUSABLE_IM（该 flag 在可聚焦窗口上表示「不弹出 IME」），
+        // 否则搜索框无法唤起系统输入法。
         val inputFlags =
             if (focusable) {
-                WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
+                0
             } else {
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE

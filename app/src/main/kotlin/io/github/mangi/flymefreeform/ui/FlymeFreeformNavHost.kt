@@ -40,6 +40,8 @@ internal fun FlymeFreeformNavHost(
     onTriggerVerticalDpChange: (Int) -> Unit,
     /** @author bomo 「全部」面板缩放百分比变更。 */
     onPanelScaleChange: (Int) -> Unit,
+    /** @author bomo 自绘「更多」面板自定义几何变更（宽/高百分比 + 圆角 + 偏移）。 */
+    onMorePanelGeometryChange: (widthPercent: Int, heightPercent: Int, cornerRadiusDp: Int, offsetXDp: Int, offsetYDp: Int) -> Unit,
     /** @author bomo 扇形外圈 / 内圈半径缩放百分比变更。 */
     onRadialRadiusChange: (Int) -> Unit,
     /** @author bomo 扇形选中圈描边厚度缩放百分比变更。 */
@@ -90,6 +92,7 @@ internal fun FlymeFreeformNavHost(
                         onTriggerHorizontalDpChange = onTriggerHorizontalDpChange,
                         onTriggerVerticalDpChange = onTriggerVerticalDpChange,
                         onPanelScaleChange = onPanelScaleChange,
+                        onMorePanelGeometryChange = onMorePanelGeometryChange,
                         onRadialRadiusChange = onRadialRadiusChange,
                         onSelectionRingWidthChange = onSelectionRingWidthChange,
                         onSelectionRingColorChange = onSelectionRingColorChange,

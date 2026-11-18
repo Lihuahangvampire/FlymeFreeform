@@ -31,6 +31,8 @@ internal data class RadialAppEntry(
 internal data class AppCatalogSnapshot(
     val radialApps: List<RadialAppEntry> = emptyList(),
     val panelApps: List<RadialAppEntry> = emptyList(),
+    /** @author bomo 最近使用应用（按最近打开排序，最多 [RECENT_APP_ENTRIES] 个），「更多」面板顶部两行展示。 */
+    val recentApps: List<RadialAppEntry> = emptyList(),
     val settings: ModuleSettingsSnapshot = ModuleSettingsSnapshot(),
     /** 外圈应用数；双圈布局以此划分外/内（内圈 = radialApps.drop(outerCount)）。 */
     val outerCount: Int = 0,
@@ -97,6 +99,7 @@ internal class ColorOsAppCatalog(
                 AppCatalogSnapshot(
                     shapedRadial,
                     content.panelApps,
+                    content.recentApps,
                     settings,
                     outerCount = content.radialOuterCount,
                 ),
@@ -175,12 +178,14 @@ internal class ColorOsAppCatalog(
             }
         }.toMap()
         panel.forEach { it.icon.prepareToDraw() }
+        recents.take(RECENT_APP_ENTRIES).forEach { it.icon.prepareToDraw() }
         return CatalogContent(
             revision,
             settings,
             radial,
             radialOuterCount = radialOuterCount,
             panel,
+            recentApps = recents.take(RECENT_APP_ENTRIES),
             sources,
         )
     }
@@ -191,6 +196,8 @@ internal class ColorOsAppCatalog(
         val radialApps: List<RadialAppEntry>,
         val radialOuterCount: Int,
         val panelApps: List<RadialAppEntry>,
+        /** @author bomo 最近使用应用（按最近打开排序）。 */
+        val recentApps: List<RadialAppEntry>,
         val radialSources: Map<ComponentName, Drawable>,
     )
 
@@ -307,6 +314,9 @@ internal class ColorOsAppCatalog(
 
     private companion object {
         const val RECENT_LIMIT = 48
+
+        /** @author bomo 「更多」面板顶部「最近使用」区块展示的应用数量（2 行 × 5 个）。 */
+        const val RECENT_APP_ENTRIES = 10
         const val MODULE_PACKAGE = "io.github.mangi.flymefreeform"
 
         /** 工具图标占位尺寸（dp）与颜色。 */

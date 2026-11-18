@@ -67,7 +67,9 @@ internal class ColorOsAllAppsContent(
     private val invokeClick = getClick.returnType.getMethod("invoke", Any::class.java, Any::class.java)
     private val nativeUnit = Unit
     private val cancelSearch = allClass.getMethod("cancelSearchEditing", Boolean::class.javaPrimitiveType)
-    private val gap = loader.loadClass("com.oplus.smartsidebar.panelview.edgepanel.utils.MainPanelSizeHelper").getMethod("getPanelGap")
+    private val gap = runCatching {
+        loader.loadClass("com.oplus.smartsidebar.panelview.edgepanel.utils.MainPanelSizeHelper").getMethod("getPanelGap")
+    }.getOrNull()
 
     // Service 使用平台默认主题；原厂内容依赖 App 的配置/主题包装，不能直接传 Service。
     private val context = themedContext(loader)
@@ -80,20 +82,22 @@ internal class ColorOsAllAppsContent(
 
     // ColorOS 16 的这些类仍保留旧版混淆接口；ColorOS 17 已改为独立的 BlurUtil/SidebarPlatformBlurHelper，
     // 本版本不再强行调用旧混淆方法，避免“全部”面板因视觉辅助类漂移而整体初始化失败。
-    private val resourceClass = if (colorOs17) null else loader.loadClass("com.oplus.smartsidebar.utils.c0")
-    private val resource = resourceClass?.getField("a")?.get(null)
-    private val isLandscape = resource?.javaClass?.getMethod("k")
-    private val isPortrait = resource?.javaClass?.getMethod("s")
-    private val isTabletop = resource?.javaClass?.getMethod("n", Boolean::class.javaPrimitiveType)
-    private val blurClass = if (colorOs17) null else loader.loadClass("com.oplus.smartsidebar.utils.b")
-    private val supportsBlur = blurClass?.getMethod("k")
-    private val makeBlur = blurClass?.getMethod("q", View::class.java, Boolean::class.javaPrimitiveType, Boolean::class.javaPrimitiveType)
-    private val updateBlur = blurClass?.let { clazz ->
-        clazz.getMethod("s", View::class.java, makeBlur!!.returnType, Float::class.javaPrimitiveType)
-    }
-    private val shadowClass = if (colorOs17) null else loader.loadClass("com.oplus.smartsidebar.utils.g0")
-    private val setupShadow = shadowClass?.getMethod("d", View::class.java)
-    private val updateShadow = shadowClass?.getMethod("e", View::class.java, Float::class.javaPrimitiveType)
+    // @author bomo 2026-10 加固：侧边栏更新后混淆类（c0 / b / g0）方法签名会漂移，
+    // 这里全部 runCatching 兜底 —— 失败仅意味着玻璃/阴影/模式判断降级，绝不再拖垮面板构造。
+    private val resourceClass = if (colorOs17) null else runCatching { loader.loadClass("com.oplus.smartsidebar.utils.c0") }.getOrNull()
+    private val resource = runCatching { resourceClass?.getField("a")?.get(null) }.getOrNull()
+    private val isLandscape = runCatching { resource?.javaClass?.getMethod("k") }.getOrNull()
+    private val isPortrait = runCatching { resource?.javaClass?.getMethod("s") }.getOrNull()
+    private val isTabletop = runCatching { resource?.javaClass?.getMethod("n", Boolean::class.javaPrimitiveType) }.getOrNull()
+    private val blurClass = if (colorOs17) null else runCatching { loader.loadClass("com.oplus.smartsidebar.utils.b") }.getOrNull()
+    private val supportsBlur = runCatching { blurClass?.getMethod("k") }.getOrNull()
+    private val makeBlur = runCatching { blurClass?.getMethod("q", View::class.java, Boolean::class.javaPrimitiveType, Boolean::class.javaPrimitiveType) }.getOrNull()
+    private val updateBlur = runCatching {
+        blurClass?.getMethod("s", View::class.java, makeBlur!!.returnType, Float::class.javaPrimitiveType)
+    }.getOrNull()
+    private val shadowClass = if (colorOs17) null else runCatching { loader.loadClass("com.oplus.smartsidebar.utils.g0") }.getOrNull()
+    private val setupShadow = runCatching { shadowClass?.getMethod("d", View::class.java) }.getOrNull()
+    private val updateShadow = runCatching { shadowClass?.getMethod("e", View::class.java, Float::class.javaPrimitiveType) }.getOrNull()
 
     // ColorOS 17 原生「全部」面板的玻璃不是窗口模糊，而是 SmartSideBar 自带的
     // SidebarPlatformBlurHelper：解析视图所在窗口的 SurfaceControl，创建 posteffect 背景模糊
@@ -156,9 +160,14 @@ internal class ColorOsAllAppsContent(
     private var card: FrameLayout? = null
 
     init {
-        require(ViewGroup::class.java.isAssignableFrom(allClass))
-        require(FrameLayout::class.java.isAssignableFrom(cardClass))
-        require(getRouter.returnType.name == ROUTER_CLASS)
+        // @author bomo 2026-10 加固：侧边栏更新后类名/签名可能漂移，严格的 require 会让
+        // 「全部」面板整体不可用。改为宽容校验 + 诊断日志：核心类仍要求是 ViewGroup/FrameLayout
+        // （连这个都变则放弃），其余只记录真实名称，后续反射失败会各自兜底降级。
+        if (!ViewGroup::class.java.isAssignableFrom(allClass) || !FrameLayout::class.java.isAssignableFrom(cardClass)) {
+            log(Log.WARN, "ALL_APPS_SIGNATURE_REJECTED all=${allClass.name} card=${cardClass.name}", null)
+            throw IllegalStateException("ALL_APPS_SIGNATURE_REJECTED")
+        }
+        log(Log.INFO, "ALL_APPS_SHAPE all=${allClass.name} card=${cardClass.name} router=${getRouter.returnType.name}", null)
         allClass.getMethod("showAllPanel", Boolean::class.javaPrimitiveType).call(view, leftSide())
         tryAttachRecents()
     }
@@ -441,7 +450,7 @@ internal class ColorOsAllAppsContent(
     fun dimensions() = AllAppsPanelGeometry.Dimensions(
         dimension("all_app_panel_max_width"), dimension("all_app_panel_max_height"),
         dimension("all_app_panel_height_small_portrait"), dimension("all_app_panel_margin_min"),
-        dimension("all_app_panel_margin_max"), gap.call(null) as Int,
+        dimension("all_app_panel_margin_max"), gap?.call(null) as? Int ?: 0,
     )
 
     fun mode(): AllAppsPanelGeometry.Mode {
@@ -511,11 +520,14 @@ internal class ColorOsAllAppsContent(
         }
     }
 
-    private fun dimension(name: String): Int = context.resources.getDimensionPixelSize(resourceId(name, "dimen"))
+    private fun dimension(name: String): Int =
+        runCatching { context.resources.getDimensionPixelSize(resourceId(name, "dimen")) }.getOrDefault(0)
 
     @Suppress("DiscouragedApi")
     private fun resourceId(name: String, type: String): Int =
-        context.resources.getIdentifier(name, type, ColorOsSidebarTarget.PACKAGE_NAME).also { require(it != 0) }
+        // @author bomo 2026-10 加固：侧边栏更新后资源名可能漂移（getIdentifier 返回 0）。
+        // 不再 require 非 0 —— 缺失时返回 0，由调用方走「区块缺失/默认尺寸」降级路径。
+        context.resources.getIdentifier(name, type, ColorOsSidebarTarget.PACKAGE_NAME)
 
     private fun Method.call(receiver: Any?, vararg args: Any?): Any? = try {
         invoke(receiver, *args)
@@ -538,12 +550,17 @@ internal class ColorOsAllAppsContent(
         val native = (getMain.call(handler) as? View)?.context
             ?: loader.loadClass("com.coloros.common.App").getField("sContext").get(null) as? Context
             ?: throw IllegalStateException("ALL_APPS_THEME_CONTEXT_UNAVAILABLE")
+        // @author bomo 2026-10 加固：主题属性随侧边栏版本可能漂移，改为宽容校验（记录日志，
+        // 不再 check 抛异常拖垮面板）。原厂面板外观属性缺失时回退默认主题即可。
         for (name in listOf("couiColorPrimaryTextOnPopup", "couiColorPrimaryNeutral", "couiColorSurfaceWithCard")) {
             val id = native.resources.getIdentifier(name, "attr", ColorOsSidebarTarget.PACKAGE_NAME)
             val value = TypedValue()
-            check(id != 0 && native.theme.resolveAttribute(id, value, true) &&
-                value.type != TypedValue.TYPE_ATTRIBUTE && value.type != TypedValue.TYPE_NULL
-            ) { "ALL_APPS_THEME_ATTRIBUTE_UNAVAILABLE" }
+            val ok =
+                id != 0 &&
+                    native.theme.resolveAttribute(id, value, true) &&
+                    value.type != TypedValue.TYPE_ATTRIBUTE &&
+                    value.type != TypedValue.TYPE_NULL
+            if (!ok) log(Log.WARN, "ALL_APPS_THEME_ATTR_MISSING $name", null)
         }
         return native
     }

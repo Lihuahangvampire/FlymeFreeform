@@ -4,11 +4,16 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import android.util.Log
 import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
 import io.github.mangi.flymefreeform.config.ConfigSnapshotCodec
 import io.github.mangi.flymefreeform.config.ModulePreferences
+import io.github.mangi.flymefreeform.config.SharedSettings
 import io.github.mangi.flymefreeform.config.SharedStateProtocol
 import io.github.mangi.flymefreeform.config.ModuleSettingsSnapshot
 import io.github.mangi.flymefreeform.config.OutsideTapCloseMode
@@ -52,9 +57,37 @@ internal class FrameworkConnectionRepository(
             }
         }
 
+    // @author bomo 监听「更多」面板拖拽几何（Settings.Global）变化 → 设置页滑条实时同步。
+    private val morePanelGeometryObserver =
+        object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                worker.execute {
+                    val current = mutableState.value
+                    if (!current.canChangeSettings) return@execute
+                    val geo = SharedSettings.readMorePanelGeometry(context) ?: return@execute
+                    val next =
+                        current.settings.copy(
+                            morePanelWidthPercent = geo[0],
+                            morePanelHeightPercent = geo[1],
+                            morePanelOffsetXDp = geo[2],
+                            morePanelOffsetYDp = geo[3],
+                        )
+                    if (next == current.settings) return@execute
+                    mutableState.value = current.copy(settings = next, issue = null)
+                }
+            }
+        }
+
     fun start() {
         check(started.compareAndSet(false, true)) { "Xposed Service listener is already registered" }
         XposedServiceHelper.registerListener(serviceListener)
+        runCatching {
+            context.contentResolver.registerContentObserver(
+                Settings.Global.getUriFor(SharedSettings.KEY_MORE_PANEL_GEOMETRY),
+                false,
+                morePanelGeometryObserver,
+            )
+        }
     }
 
     fun setModuleEnabled(enabled: Boolean) =
@@ -111,6 +144,35 @@ internal class FrameworkConnectionRepository(
         }
 
     /**
+     * @author bomo 设置自绘「更多」面板自定义几何（宽度/高度百分比 + 圆角 dp + 水平/垂直偏移 dp）。
+     * 只写配置；面板在**下次打开**时读取，因此不需要重启或重装。
+     */
+    fun updateMorePanelGeometry(
+        widthPercent: Int,
+        heightPercent: Int,
+        cornerRadiusDp: Int,
+        offsetXDp: Int,
+        offsetYDp: Int,
+    ) {
+        // @author bomo 滑条调整也写 Settings.Global：与面板拖拽共用同一真源，双向同步。
+        SharedSettings.writeMorePanelGeometry(context, widthPercent, heightPercent, offsetXDp, offsetYDp)
+        updateSettings {
+            it.copy(
+                morePanelWidthPercent =
+                    ModulePreferences.coerceMorePanelWidthPercent(widthPercent),
+                morePanelHeightPercent =
+                    ModulePreferences.coerceMorePanelHeightPercent(heightPercent),
+                morePanelCornerRadiusDp =
+                    ModulePreferences.coerceMorePanelCornerRadiusDp(cornerRadiusDp),
+                morePanelOffsetXDp =
+                    ModulePreferences.coerceMorePanelOffsetXDp(offsetXDp),
+                morePanelOffsetYDp =
+                    ModulePreferences.coerceMorePanelOffsetYDp(offsetYDp),
+            )
+        }
+    }
+
+    /**
      * @author bomo 设置扇形外圈 / 内圈半径缩放百分比。
      * 只写配置；扇形在**下次呼出**时读取，因此不需要重启或重装。
      */
@@ -126,8 +188,7 @@ internal class FrameworkConnectionRepository(
         updateSettings {
             it.copy(
                 selectionRingWidthPercent =
-                    ModulePreferences.coerceSelectionRingWidthPercent(percent),
-            )
+                    ModulePreferences.coerceSelectionRingWidthPercent(percent),            )
         }
 
     /** @author bomo 设置扇形选中圈颜色 ARGB（[ModulePreferences.SELECTION_RING_COLOR_SYSTEM] = 跟随系统）。 */
@@ -428,8 +489,19 @@ internal class FrameworkConnectionRepository(
                         apiVersion,
                         FrameworkConnectionIssue.WriteFailed,
                     )
+                    // @author bomo 合并「更多」面板拖拽几何：面板内拖拽以 Settings.Global 为真源，
+                    // 连接建立时覆盖本地偏好，保证设置页滑条与面板拖拽结果同步。
+                    val mergedSettings =
+                        SharedSettings.readMorePanelGeometry(context)?.let { geo ->
+                            settings.copy(
+                                morePanelWidthPercent = geo[0],
+                                morePanelHeightPercent = geo[1],
+                                morePanelOffsetXDp = geo[2],
+                                morePanelOffsetYDp = geo[3],
+                            )
+                        } ?: settings
                     val scopes = service.scope.filterTo(linkedSetOf()) { it in FrameworkConnectionState.REQUIRED_SCOPES }
-                    ProbeResult.connected(service, preferences, frameworkName, frameworkVersion, apiVersion, settings, scopes)
+                    ProbeResult.connected(service, preferences, frameworkName, frameworkVersion, apiVersion, mergedSettings, scopes)
                 }
             }
         } catch (exception: XposedService.ServiceException) {
