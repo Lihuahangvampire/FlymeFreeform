@@ -313,6 +313,15 @@ internal class ColorOsFreeformCoordinator(
                 activeGestureConfig = null
                 return
             }
+            // @author bomo 悬停态下的二次触摸：扇形仍显示但手势引擎已 reset，新的 DOWN 若走
+            // 手势引擎会因不在角落热区被 PassThrough。这里直接交给 overlay 判定：
+            // 命中内圈应用则启动，否则关闭扇形（点击空白关闭）。
+            val hoverOverlay = overlay
+            if (hoverOverlay?.isHoverModeActive == true) {
+                hoverOverlay.updateGesture(event.x, event.y)
+                hoverOverlay.finishGesture()
+                return
+            }
         } else if (!activeEnvironmentApproved) {
             return
         }

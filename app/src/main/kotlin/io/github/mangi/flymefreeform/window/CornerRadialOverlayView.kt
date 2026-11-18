@@ -380,12 +380,11 @@ internal class CornerRadialOverlayView(
         latestX = x
         latestY = y
         if (panelModeState.value || dismissing) return selectedIndex
-        removeCallbacks(timeout)
-        postDelayed(timeout, GESTURE_TIMEOUT_MS)
-        // @author bomo 悬停模式下手势语义由内圈转动接管；非悬停模式重置悬停计时器，
-        // 让「持续滑动 = 仍在选择」不会误触发悬停。
+        // @author bomo 悬停模式下手势语义由内圈转动接管；消失只由「悬停消失超时」控制，
+        // 不再沿用固定 5s 的 gesture timeout，否则它与悬停消失超时竞争导致提前关闭。
         if (hoverMode) {
-            // @author bomo 悬停模式下手势活动重置消失计时器（持续操作不自动关闭）。
+            removeCallbacks(timeout)
+            // 悬停模式下手势活动重置消失计时器（持续操作不自动关闭）。
             removeCallbacks(hoverDismissTimeout)
             if (hoverDismissTimeoutMs > 0) {
                 postDelayed(hoverDismissTimeout, hoverDismissTimeoutMs.toLong())
@@ -393,6 +392,8 @@ internal class CornerRadialOverlayView(
             handleInnerSpinDrag(x, y)
             return selectedIndex
         }
+        removeCallbacks(timeout)
+        postDelayed(timeout, GESTURE_TIMEOUT_MS)
         removeCallbacks(hoverTimeout)
         if (hoverTimeoutMs > 0) {
             postDelayed(hoverTimeout, hoverTimeoutMs.toLong())
@@ -421,6 +422,10 @@ internal class CornerRadialOverlayView(
     }
 
     fun dismissAnimated() = dismissAnimated(pendingCommit = null)
+
+    /** @author bomo 悬停态（外圈静止、内圈滚轮）是否激活；用于拦截悬停态下的二次触摸。 */
+    val isHoverModeActive: Boolean
+        get() = hoverMode && !dismissing && !disposed && !panelModeState.value
 
     fun disposeOverlay(): Throwable? {
         if (disposed) return null
@@ -1933,7 +1938,9 @@ internal class CornerRadialOverlayView(
                 systemIconSize = systemIconDiameter,
                 density = resources.displayMetrics.density,
                 radialItemCount = outerApps.size + 1,
-                radialInnerCount = innerApps.size,
+                // @author bomo 内圈几何始终按「最多 5 档」计算图标直径，内圈实际数量 >5 时不缩小
+                // 图标——超出部分进悬停滚轮循环展示，内圈永远只排 5 个、大小固定。
+                radialInnerCount = innerApps.size.coerceAtMost(INNER_SPIN_MAX_SLOTS),
                 radialInsets = radialInsets,
                 fontScale = resources.configuration.fontScale,
                 panelItemCount = catalog.panelApps.size,
@@ -2107,7 +2114,9 @@ internal class CornerRadialOverlayView(
         selectedIndex = null
         selectedIndexState.intValue = NO_SELECTION
         refreshInnerSpinLayout()
-        // @author bomo 进入悬停后启动消失计时器（静止超时自动关闭；0 = 不自动关闭）。
+        // @author bomo 进入悬停后取消固定 5s 手势超时，消失只由「悬停消失超时」控制。
+        removeCallbacks(timeout)
+        // 进入悬停后启动消失计时器（静止超时自动关闭；0 = 不自动关闭）。
         removeCallbacks(hoverDismissTimeout)
         if (hoverDismissTimeoutMs > 0) {
             postDelayed(hoverDismissTimeout, hoverDismissTimeoutMs.toLong())
@@ -2190,6 +2199,11 @@ internal class CornerRadialOverlayView(
         if (innerSpinDragging) {
             resetInnerSpinDragTracking()
             startInnerSpinInertia()
+            // @author bomo 松手后从此刻重新启动悬停消失计时：惯性吸附结束后静止超过该时长自动关闭。
+            removeCallbacks(hoverDismissTimeout)
+            if (hoverDismissTimeoutMs > 0) {
+                postDelayed(hoverDismissTimeout, hoverDismissTimeoutMs.toLong())
+            }
             return
         }
         val target = selectedIndex?.let(::itemTarget)
