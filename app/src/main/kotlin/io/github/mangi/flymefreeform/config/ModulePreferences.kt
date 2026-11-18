@@ -205,4 +205,38 @@ internal object ModulePreferences {
 
     fun coerceMorePanelOffsetYDp(value: Int): Int =
         value.coerceIn(MIN_MORE_PANEL_OFFSET_Y_DP, MAX_MORE_PANEL_OFFSET_Y_DP)
+
+    /**
+     * @author bomo 扇形悬停超时（毫秒）：呼出后超过此时长仍未选择，进入「悬停模式」
+     * （外圈静止、内圈可滚动转动）。0 = 禁用自动悬停；有效范围 1000~5000ms，默认 2000ms。
+     * 写入方是模块 App（设置界面滑条），system_server 每次呼出扇形时按只读取值。
+     */
+    const val KEY_HOVER_TIMEOUT_MS = "hover_timeout_ms_v1"
+    const val DEFAULT_HOVER_TIMEOUT_MS = 2000
+    const val MIN_HOVER_TIMEOUT_MS = 1000
+    const val MAX_HOVER_TIMEOUT_MS = 5000
+
+    /**
+     * @author bomo 内圈惯性转动阻尼系数（百分比，95 = 0.95/帧）：值越小停得越快。
+     * 范围 85~98，默认 95。松手后内圈按此系数逐帧衰减角速度。
+     */
+    const val KEY_INNER_SPIN_DAMPING_PERCENT = "inner_spin_damping_percent_v1"
+    const val DEFAULT_INNER_SPIN_DAMPING_PERCENT = 95
+    const val MIN_INNER_SPIN_DAMPING_PERCENT = 85
+    const val MAX_INNER_SPIN_DAMPING_PERCENT = 98
+
+    /** @author bomo 内圈转动立体感（默认关）：item 随角度靠近正面时轻微放大 + 提亮。 */
+    const val KEY_INNER_SPIN_DEPTH_EFFECT = "inner_spin_depth_effect_v1"
+    const val DEFAULT_INNER_SPIN_DEPTH_EFFECT = false
+
+    fun coerceHoverTimeoutMs(value: Int): Int =
+        when {
+            value <= 0 -> 0
+            value < MIN_HOVER_TIMEOUT_MS -> MIN_HOVER_TIMEOUT_MS
+            value > MAX_HOVER_TIMEOUT_MS -> MAX_HOVER_TIMEOUT_MS
+            else -> value
+        }
+
+    fun coerceInnerSpinDampingPercent(value: Int): Int =
+        value.coerceIn(MIN_INNER_SPIN_DAMPING_PERCENT, MAX_INNER_SPIN_DAMPING_PERCENT)
 }

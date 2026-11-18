@@ -48,6 +48,12 @@ internal fun FlymeFreeformNavHost(
     onSelectionRingWidthChange: (Int) -> Unit,
     /** @author bomo 扇形选中圈颜色（ARGB）变更。 */
     onSelectionRingColorChange: (Int) -> Unit,
+    /** @author bomo 扇形悬停超时（毫秒；0 = 禁用）变更。 */
+    onHoverTimeoutChange: (Int) -> Unit,
+    /** @author bomo 内圈惯性转动阻尼系数（百分比）变更。 */
+    onInnerSpinDampingChange: (Int) -> Unit,
+    /** @author bomo 内圈转动立体感开关变更。 */
+    onInnerSpinDepthEffectChange: (Boolean) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
     /** @author bomo 外圈固定应用未满时用最近使用补齐（开关）。 */
@@ -96,6 +102,9 @@ internal fun FlymeFreeformNavHost(
                         onRadialRadiusChange = onRadialRadiusChange,
                         onSelectionRingWidthChange = onSelectionRingWidthChange,
                         onSelectionRingColorChange = onSelectionRingColorChange,
+                        onHoverTimeoutChange = onHoverTimeoutChange,
+                        onInnerSpinDampingChange = onInnerSpinDampingChange,
+                        onInnerSpinDepthEffectChange = onInnerSpinDepthEffectChange,
                         onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
                         onHandleSwipeUpToMiniEnabledChange =
                             onHandleSwipeUpToMiniEnabledChange,

@@ -14,6 +14,7 @@ import android.text.TextWatcher
 import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.RoundedCorner
+import android.view.ViewConfiguration
 import android.view.WindowInsets
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
@@ -121,6 +122,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import io.github.mangi.flymefreeform.config.ModulePreferences
 import io.github.mangi.flymefreeform.gesture.CornerSide
+import io.github.mangi.flymefreeform.gesture.GesturePoint
 import io.github.mangi.flymefreeform.gesture.RadialGeometry
 import io.github.mangi.flymefreeform.gesture.RadialLayout
 import io.github.mangi.flymefreeform.platform.coloros.AppCatalogSnapshot
@@ -136,7 +138,13 @@ import top.yukonga.miuix.kmp.squircle.isSquircleEnabled
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.PI
+import kotlin.math.round
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 @SuppressLint("ViewConstructor")
 internal class CornerRadialOverlayView(
@@ -201,11 +209,45 @@ internal class CornerRadialOverlayView(
     private var morePanelCornerRadiusDp = ModulePreferences.DEFAULT_MORE_PANEL_CORNER_RADIUS_DP
     private var morePanelOffsetXDp = ModulePreferences.DEFAULT_MORE_PANEL_OFFSET_X_DP
     private var morePanelOffsetYDp = ModulePreferences.DEFAULT_MORE_PANEL_OFFSET_Y_DP
+    /** @author bomo 悬停超时（毫秒；0 = 禁用自动悬停）。 */
+    private var hoverTimeoutMs = ModulePreferences.DEFAULT_HOVER_TIMEOUT_MS
+    /** @author bomo 内圈惯性转动阻尼系数（百分比，95 = 0.95/帧）。 */
+    private var innerSpinDampingPercent = ModulePreferences.DEFAULT_INNER_SPIN_DAMPING_PERCENT
+    /** @author bomo 内圈转动立体感开关（默认关）。 */
+    private var innerSpinDepthEffect = ModulePreferences.DEFAULT_INNER_SPIN_DEPTH_EFFECT
+    /** @author bomo 是否已进入悬停模式（外圈静止、内圈可滚动转动）。 */
+    private var hoverMode = false
+    /** @author bomo 内圈角度偏移（deg）：悬停模式下随手指转动、惯性衰减、吸附档位。 */
+    private var innerAngleOffset = 0f
+    /** @author bomo 内圈惯性转动角速度（deg/s）：松手记录、逐帧衰减。 */
+    private var innerSpinVelocity = 0f
+    /** @author bomo 内圈是否正在惯性滚动中。 */
+    private var innerSpinAnimating = false
+    /** @author bomo 悬停模式下内圈是否正在被拖动。 */
+    private var innerSpinDragging = false
+    /** @author bomo 悬停模式是否已在本次呼出内触发过进入提示（避免重复脉动）。 */
+    private var hoverHintShown = false
+    /** @author bomo 悬停拖动起点（用于区分点击与拖动）。 */
+    private var innerSpinDownX = 0f
+    private var innerSpinDownY = 0f
+    /** @author bomo 上一次拖动点（用于计算角速度）。 */
+    private var innerSpinLastX = 0f
+    private var innerSpinLastY = 0f
+    private var innerSpinLastTime = 0L
+    /** @author bomo 内圈惯性/吸附动画器。 */
+    private var innerSpinAnimator: ValueAnimator? = null
+    private var innerSpinLastAnimTime = 0L
+    /** @author bomo 悬停滚轮模式下，内圈 itemCenters 对应的 radialApps 下标（顺序一致）。 */
+    private var innerSpinTargets: List<Int> = emptyList()
+    /** @author bomo 进入悬停视觉提示的脉动幅度（0~0.12，一次性呼吸脉冲）。 */
+    private val hoverHintPulse = mutableFloatStateOf(0f)
     /** @author bomo 定制前的自适应几何（拖拽调整的基准，避免基于上次定制结果反复缩放）。 */
     private var basePanelMetrics: AdaptiveOverlayMetrics? = null
     private var lastTickUptime = 0L
     private val timeout = Runnable(::requestDismiss)
     private val dismissFallback = Runnable(::completeRadialExit)
+    /** @author bomo 悬停计时器：超时未选择 → 进入悬停模式（外圈静止、内圈可转动）。 */
+    private val hoverTimeout = Runnable(::enterHoverMode)
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
@@ -247,6 +289,12 @@ internal class CornerRadialOverlayView(
         morePanelCornerRadiusDp: Int = ModulePreferences.DEFAULT_MORE_PANEL_CORNER_RADIUS_DP,
         morePanelOffsetXDp: Int = ModulePreferences.DEFAULT_MORE_PANEL_OFFSET_X_DP,
         morePanelOffsetYDp: Int = ModulePreferences.DEFAULT_MORE_PANEL_OFFSET_Y_DP,
+        /** @author bomo 悬停超时（毫秒；0 = 禁用自动悬停）。 */
+        hoverTimeoutMs: Int = ModulePreferences.DEFAULT_HOVER_TIMEOUT_MS,
+        /** @author bomo 内圈惯性转动阻尼系数（百分比，95 = 0.95/帧）。 */
+        innerSpinDampingPercent: Int = ModulePreferences.DEFAULT_INNER_SPIN_DAMPING_PERCENT,
+        /** @author bomo 内圈转动立体感开关（默认关）。 */
+        innerSpinDepthEffect: Boolean = ModulePreferences.DEFAULT_INNER_SPIN_DEPTH_EFFECT,
     ) {
         check(!isAttachedToWindow) { "Overlay must be initialized before it is attached" }
         this.side = side
@@ -280,6 +328,17 @@ internal class CornerRadialOverlayView(
                 ModulePreferences.MIN_MORE_PANEL_OFFSET_Y_DP,
                 ModulePreferences.MAX_MORE_PANEL_OFFSET_Y_DP,
             )
+        this.hoverTimeoutMs = ModulePreferences.coerceHoverTimeoutMs(hoverTimeoutMs)
+        this.innerSpinDampingPercent =
+            ModulePreferences.coerceInnerSpinDampingPercent(innerSpinDampingPercent)
+        this.innerSpinDepthEffect = innerSpinDepthEffect
+        // @author bomo 每次呼出重置悬停状态（不跨呼出残留转动角度/速度/提示）。
+        hoverMode = false
+        innerAngleOffset = 0f
+        innerSpinVelocity = 0f
+        innerSpinAnimating = false
+        innerSpinDragging = false
+        hoverHintShown = false
         latestX = x
         latestY = y
         radialImages.value = catalog.radialApps.map { entry -> entry.icon.asImageBitmap() }
@@ -301,6 +360,11 @@ internal class CornerRadialOverlayView(
         )
         removeCallbacks(timeout)
         postDelayed(timeout, GESTURE_TIMEOUT_MS)
+        // @author bomo 启动悬停计时器：超时未选择 → 进入悬停模式（0 = 禁用）。
+        removeCallbacks(hoverTimeout)
+        if (hoverTimeoutMs > 0) {
+            postDelayed(hoverTimeout, hoverTimeoutMs.toLong())
+        }
     }
 
     fun updateGesture(x: Float, y: Float): Int? {
@@ -309,13 +373,28 @@ internal class CornerRadialOverlayView(
         if (panelModeState.value || dismissing) return selectedIndex
         removeCallbacks(timeout)
         postDelayed(timeout, GESTURE_TIMEOUT_MS)
+        // @author bomo 悬停模式下手势语义由内圈转动接管；非悬停模式重置悬停计时器，
+        // 让「持续滑动 = 仍在选择」不会误触发悬停。
+        if (hoverMode) {
+            handleInnerSpinDrag(x, y)
+            return selectedIndex
+        }
+        removeCallbacks(hoverTimeout)
+        if (hoverTimeoutMs > 0) {
+            postDelayed(hoverTimeout, hoverTimeoutMs.toLong())
+        }
         updateGestureFromLatestPoint()
         return selectedIndex
     }
 
     fun finishGesture() {
+        // @author bomo 悬停模式松手语义不同：拖动 → 惯性吸附；点击 → 启动；否则保持悬停。
+        if (hoverMode) {
+            finishInnerSpinGesture()
+            return
+        }
         val selection = selectedIndex
-        val target = selection?.let(::slotTarget)
+        val target = selection?.let(::itemTarget)
         when {
             selection == null -> dismissAnimated()
             target == null -> showMorePanel()
@@ -334,8 +413,11 @@ internal class CornerRadialOverlayView(
         disposed = true
         backdropAnimator?.cancel()
         backdropAnimator = null
+        innerSpinAnimator?.cancel()
+        innerSpinAnimator = null
         removeCallbacks(timeout)
         removeCallbacks(dismissFallback)
+        removeCallbacks(hoverTimeout)
         var failure: Throwable? = null
         try {
             if (lifecycleRegistry.currentState.isAtLeast(Lifecycle.State.STARTED)) {
@@ -621,13 +703,19 @@ internal class CornerRadialOverlayView(
                 } else {
                     1f
                 }
-            val target = slotTarget(index)
-            val diameter =
-                (if (target != null && target >= outerApps().size) {
-                    metrics.innerIconDiameter
+            val target = itemTarget(index)
+            val outerCount = outerApps().size
+            val isInnerItem = target != null && target >= outerCount
+            // @author bomo 悬停滚轮：进入提示呼吸脉动 + 可选立体感（窗口正面项放大）。
+            val spinScale =
+                if (isInnerItem && innerSpinEnabled()) {
+                    (1f + hoverHintPulse.value) * innerSpinDepthScale(index - outerCount - 1)
                 } else {
-                    metrics.iconDiameter
-                }) * scale * iconEnlarge
+                    1f
+                }
+            val diameter =
+                (if (isInnerItem) metrics.innerIconDiameter else metrics.iconDiameter) *
+                    scale * iconEnlarge * spinScale
             rotate(motion.rotationDegrees, pivot = Offset(centerX, centerY)) {
                 if (target == null) {
                     drawMoreItem(centerX, centerY, diameter, contentAlpha)
@@ -1851,26 +1939,22 @@ internal class CornerRadialOverlayView(
                 radius = metrics.radial.radius,
                 itemCount = outerApps.size + 1,
             )
-        val innerCenters =
-            if (innerApps.isEmpty() || metrics.radial.innerRadius <= 0f) {
-                emptyList()
-            } else {
-                RadialGeometry.layoutInner(
-                    side = side,
-                    width = safeWidth,
-                    height = safeHeight,
-                    radiusInner = metrics.radial.innerRadius,
-                    itemCount = innerApps.size,
-                    offsetX = radialInsets.left,
-                    offsetY = radialInsets.top,
-                ).itemCenters
-            }
+        val innerSpin =
+            computeInnerCenters(
+                innerApps = innerApps,
+                outerCount = outerApps.size,
+                safeWidth = safeWidth,
+                safeHeight = safeHeight,
+                radialInsets = radialInsets,
+                innerRadius = metrics.radial.innerRadius,
+            )
+        innerSpinTargets = innerSpin.second
         layoutState.value =
             RadialLayout(
                 side = side,
                 origin = outerLayout.origin,
                 radius = outerLayout.radius,
-                itemCenters = outerLayout.itemCenters + innerCenters,
+                itemCenters = outerLayout.itemCenters + innerSpin.first,
             )
         if (!panelModeState.value && !dismissing) updateGestureFromLatestPoint()
     }
@@ -1894,6 +1978,332 @@ internal class CornerRadialOverlayView(
             index == outerCount -> null
             else -> outerCount + (index - outerCount - 1)
         }
+    }
+
+    /**
+     * @author bomo 合并布局下标 → [catalog.radialApps] 下标。
+     * 悬停滚轮模式下内圈 itemCenters 是「窗口内应用」的乱序子集，必须用动态映射；
+     * 其余情况沿用静态 [slotTarget]。
+     */
+    private fun itemTarget(index: Int): Int? {
+        val outerCount = outerApps().size
+        if (innerSpinEnabled() && index > outerCount) {
+            return innerSpinTargets.getOrNull(index - outerCount - 1)
+        }
+        return slotTarget(index)
+    }
+
+    /** @author bomo 悬停模式且内圈 ≥5 时启用滚轮转动；内圈 <5 均匀铺满不滚。 */
+    private fun innerSpinEnabled(): Boolean =
+        hoverMode && innerApps().size >= INNER_SPIN_MAX_SLOTS
+
+    /**
+     * @author bomo 应用 k 在滚轮窗口内的位置（度，[0,84)）；窗口外返回 null。
+     * 应用首尾相接成环：`((k + 0.5) * step + offset) mod (N * step)`，
+     * 滑动 offset 变化时一侧滑出、另一侧补齐，实现无缝循环。
+     */
+    private fun innerSpinWindowPosition(k: Int, count: Int): Float? {
+        if (count <= 0) return null
+        val ringLength = count * INNER_SPIN_STEP_DEGREES
+        val raw = (k + 0.5f) * INNER_SPIN_STEP_DEGREES + innerAngleOffset
+        val wrapped = ((raw % ringLength) + ringLength) % ringLength
+        return wrapped.takeIf { it < INNER_SPAN_DEGREES }
+    }
+
+    /** @author bomo 窗口内位置 pos（度）→ 实际显示角度（度，含 side 基准）。 */
+    private fun innerSpinDisplayAngle(pos: Float): Float =
+        if (side == CornerSide.Left) {
+            -INNER_SAFE_DEGREES - pos
+        } else {
+            -180f + INNER_SAFE_DEGREES + pos
+        }
+
+    /**
+     * @author bomo 计算内圈中心点 + 对应 [catalog.radialApps] 下标。
+     * 悬停滚轮：只返回窗口内应用（按窗口位置升序，保证 z-order / 选中顺序）；
+     * 非悬停：沿用 [RadialGeometry.layoutInner] 均匀铺满全部内圈应用。
+     */
+    private fun computeInnerCenters(
+        innerApps: List<RadialAppEntry>,
+        outerCount: Int,
+        safeWidth: Float,
+        safeHeight: Float,
+        radialInsets: OverlaySafeInsets,
+        innerRadius: Float,
+    ): Pair<List<GesturePoint>, List<Int>> {
+        if (innerApps.isEmpty() || innerRadius <= 0f) {
+            return emptyList<GesturePoint>() to emptyList<Int>()
+        }
+        if (!innerSpinEnabled()) {
+            val centers =
+                RadialGeometry
+                    .layoutInner(
+                        side = side,
+                        width = safeWidth,
+                        height = safeHeight,
+                        radiusInner = innerRadius,
+                        itemCount = innerApps.size,
+                        offsetX = radialInsets.left,
+                        offsetY = radialInsets.top,
+                    ).itemCenters
+            return centers to innerApps.indices.map { outerCount + it }
+        }
+        val origin =
+            GesturePoint(
+                radialInsets.left + if (side == CornerSide.Left) 0f else safeWidth,
+                radialInsets.top + safeHeight,
+            )
+        val items =
+            innerApps.indices
+                .mapNotNull { k ->
+                    innerSpinWindowPosition(k, innerApps.size)?.let { pos -> pos to k }
+                }
+                .sortedBy { it.first }
+        val centers =
+            items.map { (pos, _) ->
+                val radians = innerSpinDisplayAngle(pos) * PI.toFloat() / 180f
+                GesturePoint(
+                    x = origin.x + cos(radians) * innerRadius,
+                    y = origin.y + sin(radians) * innerRadius,
+                )
+            }
+        val targets = items.map { (_, k) -> outerCount + k }
+        return centers to targets
+    }
+
+    /** @author bomo 进入悬停模式：外圈静止、内圈切换为滚轮式展示并做一次进入提示。 */
+    private fun enterHoverMode() {
+        if (disposed || dismissing || panelModeState.value || hoverMode) return
+        hoverMode = true
+        selectedIndex = null
+        selectedIndexState.intValue = NO_SELECTION
+        refreshInnerSpinLayout()
+        if (!hoverHintShown) {
+            hoverHintShown = true
+            triggerHoverHint()
+        }
+    }
+
+    /** @author bomo 进入悬停视觉提示：内圈整体做一次呼吸脉动。 */
+    private fun triggerHoverHint() {
+        hoverHintPulse.floatValue = 0f
+        ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 360L
+            addUpdateListener {
+                val t = it.animatedValue as Float
+                hoverHintPulse.floatValue = HOVER_HINT_PULSE_AMPLITUDE * (1f - abs(2f * t - 1f))
+            }
+            start()
+        }
+    }
+
+    /** @author bomo 悬停模式手势：位移小 = 点击意图（高亮手指下应用），位移大 = 拖动滚动。 */
+    private fun handleInnerSpinDrag(x: Float, y: Float) {
+        if (!innerSpinEnabled()) {
+            // 内圈 <5：均匀铺满不滚，但可点击启动 → 沿用选中高亮。
+            updateGestureFromLatestPoint()
+            return
+        }
+        if (!innerSpinDragging) {
+            if (innerSpinDownX == 0f && innerSpinDownY == 0f) {
+                innerSpinDownX = x
+                innerSpinDownY = y
+                innerSpinLastX = x
+                innerSpinLastY = y
+                innerSpinLastTime = SystemClock.uptimeMillis()
+            }
+            val slopPx = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+            if (hypot(x - innerSpinDownX, y - innerSpinDownY) > slopPx) {
+                innerSpinDragging = true
+                selectedIndex = null
+                selectedIndexState.intValue = NO_SELECTION
+            } else {
+                updateGestureFromLatestPoint()
+            }
+        }
+        if (innerSpinDragging) {
+            stepInnerSpinDrag(x, y)
+        }
+    }
+
+    /** @author bomo 悬停拖动：手指极角变化映射为滚动偏移，并记录角速度供松手惯性使用。 */
+    private fun stepInnerSpinDrag(x: Float, y: Float) {
+        val origin = layoutState.value.origin
+        val now = SystemClock.uptimeMillis()
+        val dt = ((now - innerSpinLastTime) / 1000f).coerceAtLeast(0.001f)
+        val prev = atan2(innerSpinLastY - origin.y, innerSpinLastX - origin.x)
+        val curr = atan2(y - origin.y, x - origin.x)
+        val deltaDeg = normalizeAngleDelta(curr - prev)
+        val signed = if (side == CornerSide.Left) -deltaDeg else deltaDeg
+        val clamped = signed.coerceIn(-INNER_SPIN_MAX_DELTA_DEGREES, INNER_SPIN_MAX_DELTA_DEGREES)
+        innerAngleOffset += clamped
+        innerSpinVelocity = clamped / dt
+        refreshInnerSpinLayout()
+        innerSpinLastX = x
+        innerSpinLastY = y
+        innerSpinLastTime = now
+    }
+
+    private fun normalizeAngleDelta(deltaRad: Float): Float {
+        var d = deltaRad
+        while (d > PI.toFloat()) d -= 2f * PI.toFloat()
+        while (d < -PI.toFloat()) d += 2f * PI.toFloat()
+        return Math.toDegrees(d.toDouble()).toFloat()
+    }
+
+    /** @author bomo 悬停模式松手：拖动 → 惯性+吸附；点击 → 启动高亮应用；否则保持悬停。 */
+    private fun finishInnerSpinGesture() {
+        if (innerSpinDragging) {
+            resetInnerSpinDragTracking()
+            startInnerSpinInertia()
+            return
+        }
+        val target = selectedIndex?.let(::itemTarget)
+        resetInnerSpinDragTracking()
+        if (target != null && target in catalog.radialApps.indices) {
+            dismissAnimated(catalog.radialApps[target])
+        }
+        // 未选中任何应用 → 保持悬停（外圈静止、内圈可继续转动）。
+    }
+
+    private fun resetInnerSpinDragTracking() {
+        innerSpinDownX = 0f
+        innerSpinDownY = 0f
+        innerSpinLastX = 0f
+        innerSpinLastY = 0f
+        innerSpinLastTime = 0L
+        innerSpinDragging = false
+    }
+
+    /** @author bomo 松手后惯性转动：角速度逐帧按阻尼系数衰减，低到阈值进入档位吸附。 */
+    private fun startInnerSpinInertia() {
+        innerSpinAnimator?.cancel()
+        innerSpinAnimating = true
+        innerSpinLastAnimTime = SystemClock.uptimeMillis()
+        innerSpinAnimator =
+            ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = Long.MAX_VALUE / 2
+                repeatCount = ValueAnimator.INFINITE
+                addUpdateListener {
+                    val now = SystemClock.uptimeMillis()
+                    val dt =
+                        ((now - innerSpinLastAnimTime) / 1000f)
+                            .coerceAtMost(INNER_SPIN_MAX_FRAME_SECONDS)
+                    innerSpinLastAnimTime = now
+                    stepInnerSpinInertia(dt)
+                }
+                start()
+            }
+    }
+
+    private fun stepInnerSpinInertia(dt: Float) {
+        val damping = innerSpinDampingPercent / 100f
+        innerSpinVelocity *= damping
+        if (abs(innerSpinVelocity) < INNER_SPIN_ADSORB_VELOCITY_DEG) {
+            startInnerSpinSnap()
+            return
+        }
+        innerAngleOffset += innerSpinVelocity * dt
+        refreshInnerSpinLayout()
+    }
+
+    /** @author bomo 吸附到最近档位（短弹簧动画），完成后规范化偏移避免累积误差。 */
+    private fun startInnerSpinSnap() {
+        val start = innerAngleOffset
+        val target = round(innerAngleOffset / INNER_SPIN_STEP_DEGREES) * INNER_SPIN_STEP_DEGREES
+        if (abs(target - start) < 0.01f) {
+            normalizeInnerSpinOffset()
+            return
+        }
+        innerSpinAnimator?.cancel()
+        innerSpinAnimator =
+            ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = INNER_SPIN_SNAP_MS
+                addUpdateListener {
+                    val t = it.animatedValue as Float
+                    innerAngleOffset = start + (target - start) * snapEasing(t)
+                    refreshInnerSpinLayout()
+                    if (t >= 1f) {
+                        normalizeInnerSpinOffset()
+                    }
+                }
+                start()
+            }
+    }
+
+    private fun normalizeInnerSpinOffset() {
+        val count = innerApps().size
+        if (count > 0) {
+            val ringLength = count * INNER_SPIN_STEP_DEGREES
+            var offset = ((innerAngleOffset % ringLength) + ringLength) % ringLength
+            if (offset > ringLength / 2f) offset -= ringLength
+            innerAngleOffset = offset
+        }
+        innerSpinVelocity = 0f
+        innerSpinAnimating = false
+        innerSpinAnimator?.cancel()
+        innerSpinAnimator = null
+        refreshInnerSpinLayout()
+    }
+
+    /** @author bomo 吸附短弹簧缓动（easeOutBack：快速到位 + 轻微回弹）。 */
+    private fun snapEasing(t: Float): Float {
+        val c1 = 1.70158f
+        val c3 = c1 + 1f
+        val x = t - 1f
+        return 1f + c3 * x * x * x + c1 * x * x
+    }
+
+    /** @author bomo 转动立体感：窗口正面（中间档位）放大，两端缩小；关闭开关时恒为 1。 */
+    private fun innerSpinDepthScale(innerOrdinal: Int): Float {
+        if (!innerSpinDepthEffect) return 1f
+        val count = innerSpinTargets.size
+        if (count <= 1) return 1f
+        val center = (count - 1) / 2f
+        val distance = abs(innerOrdinal - center) / center.coerceAtLeast(1f)
+        return 1f + INNER_SPIN_DEPTH_AMPLITUDE * (1f - distance)
+    }
+
+    /** @author bomo 悬停滚轮模式重算内圈布局（跟手 / 惯性 / 吸附每帧调用）。 */
+    private fun refreshInnerSpinLayout() {
+        if (disposed || panelModeState.value) return
+        val metrics = metricsState.value ?: return
+        if (metrics.radial.innerRadius <= 0f) return
+        val radialInsets = currentRadialInsets()
+        val safeWidth =
+            (resources.displayMetrics.widthPixels - radialInsets.left - radialInsets.right)
+                .coerceAtLeast(1f)
+        val safeHeight =
+            (resources.displayMetrics.heightPixels - radialInsets.top - radialInsets.bottom)
+                .coerceAtLeast(1f)
+        val outerApps = outerApps()
+        val outerLayout =
+            RadialGeometry.layout(
+                side = side,
+                width = safeWidth,
+                height = safeHeight,
+                offsetX = radialInsets.left,
+                offsetY = radialInsets.top,
+                radius = metrics.radial.radius,
+                itemCount = outerApps.size + 1,
+            )
+        val innerSpin =
+            computeInnerCenters(
+                innerApps = innerApps(),
+                outerCount = outerApps.size,
+                safeWidth = safeWidth,
+                safeHeight = safeHeight,
+                radialInsets = radialInsets,
+                innerRadius = metrics.radial.innerRadius,
+            )
+        innerSpinTargets = innerSpin.second
+        layoutState.value =
+            RadialLayout(
+                side = side,
+                origin = outerLayout.origin,
+                radius = outerLayout.radius,
+                itemCenters = outerLayout.itemCenters + innerSpin.first,
+            )
     }
 
     /**
@@ -1981,15 +2391,42 @@ internal class CornerRadialOverlayView(
         val metrics = metricsState.value ?: return
         val layout = layoutState.value
         if (layout.itemCenters.isEmpty()) return
+        val outerCount = outerApps().size
         val next =
-            RadialGeometry.selection(
-                layout = layout,
-                x = latestX,
-                y = latestY,
-                previous = selectedIndex,
-                enterRadius = metrics.radial.selectionEnterRadius,
-                keepRadius = metrics.radial.selectionKeepRadius,
-            )
+            if (hoverMode) {
+                // @author bomo 悬停模式：外圈静止，仅在内圈窗口内选择（映射回完整下标）。
+                val innerStart = outerCount + 1
+                val innerCount = layout.itemCenters.size - innerStart
+                if (innerCount <= 0) {
+                    null
+                } else {
+                    val innerLayout =
+                        RadialLayout(
+                            side = layout.side,
+                            origin = layout.origin,
+                            radius = metrics.radial.innerRadius,
+                            itemCenters = layout.itemCenters.drop(innerStart),
+                        )
+                    RadialGeometry
+                        .selection(
+                            layout = innerLayout,
+                            x = latestX,
+                            y = latestY,
+                            previous = selectedIndex?.minus(innerStart)?.takeIf { it >= 0 },
+                            enterRadius = metrics.radial.selectionEnterRadius,
+                            keepRadius = metrics.radial.selectionKeepRadius,
+                        )?.plus(innerStart)
+                }
+            } else {
+                RadialGeometry.selection(
+                    layout = layout,
+                    x = latestX,
+                    y = latestY,
+                    previous = selectedIndex,
+                    enterRadius = metrics.radial.selectionEnterRadius,
+                    keepRadius = metrics.radial.selectionKeepRadius,
+                )
+            }
         if (next == selectedIndex) return
         selectedIndex = next
         selectedIndexState.intValue = next ?: NO_SELECTION
@@ -2066,6 +2503,9 @@ internal class CornerRadialOverlayView(
         if (dismissing || disposed) return
         dismissing = true
         removeCallbacks(timeout)
+        removeCallbacks(hoverTimeout)
+        innerSpinAnimator?.cancel()
+        innerSpinAnimator = null
         exitRequestState.value = ExitRequest(pendingCommit, entryProgress.value)
         removeCallbacks(dismissFallback)
         if (!ValueAnimator.areAnimatorsEnabled()) {
@@ -2240,6 +2680,26 @@ internal class CornerRadialOverlayView(
         /** @author bomo 选中圈描边厚度缩放系数的钳制区间（对应设置百分比 50% ~ 250%）。 */
         const val SELECTION_RING_WIDTH_SCALE_MIN = 0.5f
         const val SELECTION_RING_WIDTH_SCALE_MAX = 2.5f
+        /** @author bomo 内圈滚轮转动：可视档位上限（内圈 ≥5 固定显示 5 个，<5 均匀铺满）。 */
+        const val INNER_SPIN_MAX_SLOTS = 5
+        /** @author bomo 内圈滚轮档位间距（度）：84° 弧 / 5 档。 */
+        const val INNER_SPIN_STEP_DEGREES = 16.8f
+        /** @author bomo 内圈弧张角（度），与 RadialGeometry.SPAN_DEGREES 一致。 */
+        const val INNER_SPAN_DEGREES = 84f
+        /** @author bomo 内圈弧安全角（度），与 RadialGeometry.SAFE_DEGREES 一致。 */
+        const val INNER_SAFE_DEGREES = 3f
+        /** @author bomo 惯性吸附角速度阈值（deg/s）：低于此值直接进入吸附。 */
+        const val INNER_SPIN_ADSORB_VELOCITY_DEG = 30f
+        /** @author bomo 单帧最大角度增量（deg）：防止极端快速滑动一帧跳过多档。 */
+        const val INNER_SPIN_MAX_DELTA_DEGREES = 32f
+        /** @author bomo 吸附短弹簧动画时长（ms）。 */
+        const val INNER_SPIN_SNAP_MS = 130L
+        /** @author bomo 惯性单帧最大时间步（s）：防止掉帧导致速度积分爆炸。 */
+        const val INNER_SPIN_MAX_FRAME_SECONDS = 0.05f
+        /** @author bomo 进入悬停视觉提示的脉动放大幅度（比例）。 */
+        const val HOVER_HINT_PULSE_AMPLITUDE = 0.12f
+        /** @author bomo 转动立体感的正面项放大幅度（比例；窗口中间最大，两端为 0）。 */
+        const val INNER_SPIN_DEPTH_AMPLITUDE = 0.15f
     }
 }
 

@@ -195,6 +195,31 @@ internal class FrameworkConnectionRepository(
     fun setSelectionRingColorArgb(argb: Int) =
         updateSettings { it.copy(selectionRingColorArgb = argb) }
 
+    /**
+     * @author bomo 设置扇形悬停超时（毫秒；0 = 禁用自动悬停）。
+     * 只写配置；扇形在**下次呼出**时读取，因此不需要重启或重装。
+     */
+    fun setHoverTimeoutMs(millis: Int) =
+        updateSettings {
+            it.copy(hoverTimeoutMs = ModulePreferences.coerceHoverTimeoutMs(millis))
+        }
+
+    /**
+     * @author bomo 设置内圈惯性转动阻尼系数（百分比，85 ~ 98）。
+     * 只写配置；扇形在**下次呼出**时读取，因此不需要重启或重装。
+     */
+    fun setInnerSpinDampingPercent(percent: Int) =
+        updateSettings {
+            it.copy(
+                innerSpinDampingPercent =
+                    ModulePreferences.coerceInnerSpinDampingPercent(percent),
+            )
+        }
+
+    /** @author bomo 设置内圈转动立体感开关。 */
+    fun setInnerSpinDepthEffect(enabled: Boolean) =
+        updateSettings { it.copy(innerSpinDepthEffect = enabled) }
+
     fun setOutsideTapCloseMode(mode: OutsideTapCloseMode) =
         updateSettings { it.copy(outsideTapCloseMode = mode) }
 

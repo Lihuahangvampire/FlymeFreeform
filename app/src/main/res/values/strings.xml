@@ -75,6 +75,14 @@
     <string name="radial_apps_count_summary">已固定 %1$d 个应用</string>
     <string name="fill_outer_with_recent_title">外圈未满时补齐最近使用</string>
     <string name="fill_outer_with_recent_summary">外圈固定应用少于 6 个时，用最近使用的应用补齐空缺；不会覆盖已固定的应用</string>
+    <string name="hover_timeout_title">悬停超时</string>
+    <string name="hover_timeout_summary">呼出后超过此时长未选择，外圈静止、内圈变为可滚动；0 为禁用</string>
+    <string name="hover_timeout_disabled">禁用</string>
+    <string name="hover_timeout_seconds">%1$d 秒</string>
+    <string name="inner_spin_damping_title">内圈惯性阻尼</string>
+    <string name="inner_spin_damping_summary">松手后内圈转动衰减快慢；值越小停得越快</string>
+    <string name="inner_spin_depth_title">内圈转动立体感</string>
+    <string name="inner_spin_depth_summary">转动时靠近正面的应用轻微放大提亮</string>
 
     <string name="outside_tap_close_title">点击小窗外关闭</string>
     <string name="outside_tap_close_summary">选择不执行、单击关闭或双击关闭；三种模式互斥</string>
@@ -103,6 +111,13 @@
     <string name="search_apps_placeholder">搜索应用</string>
     <string name="no_matching_apps">未找到匹配应用</string>
     <string name="back_action">返回</string>
+
+    <string name="duplicate_app_title">应用已在另一圈</string>
+    <string name="duplicate_app_message">「%1$s」已在%2$s，覆盖后将移到%3$s</string>
+    <string name="outer_ring_name">外圈</string>
+    <string name="inner_ring_name">内圈</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_overwrite">覆盖</string>
 
     <string name="implementation_principle_title">实现方式</string>
     <string name="implementation_principle_summary">直接使用当前 ColorOS 已有自由窗能力，只调整快捷入口与交互编排，不另建窗口引擎。</string>

@@ -35,8 +35,11 @@ internal object AppSelectionPolicy {
         outerLimit: Int,
         fillOuterWithRecent: Boolean,
     ): Pair<List<T>, Int> {
-        val excluded = (outerPins + innerPins).mapTo(HashSet()) { identity(it) }
-        val fillCount = if (fillOuterWithRecent) (outerLimit - outerPins.size).coerceAtLeast(0) else 0
+        // @author bomo 内外圈各自先去重：防用户把同一应用重复 pin 进同一个圈。
+        val outerUnique = outerPins.distinctBy(identity)
+        val innerUnique = innerPins.distinctBy(identity)
+        val excluded = (outerUnique + innerUnique).mapTo(HashSet()) { identity(it) }
+        val fillCount = if (fillOuterWithRecent) (outerLimit - outerUnique.size).coerceAtLeast(0) else 0
         val fill =
             if (fillCount == 0) {
                 emptyList()
@@ -46,7 +49,10 @@ internal object AppSelectionPolicy {
                     .distinctBy(identity)
                     .take(fillCount)
             }
-        return (outerPins + fill + innerPins) to (outerPins.size + fill.size)
+        // @author bomo 拼接后整体再去重：外圈优先（distinctBy 保留首次出现），
+        // 保证同一应用不会同时出现在内圈与外圈；内圈重复项被剔除。
+        val combined = (outerUnique + fill + innerUnique).distinctBy(identity)
+        return combined to (outerUnique.size + fill.size)
     }
 
     fun <T> panelItems(

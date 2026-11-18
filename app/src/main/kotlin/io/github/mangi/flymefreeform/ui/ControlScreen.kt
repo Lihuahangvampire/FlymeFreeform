@@ -43,8 +43,10 @@ import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.ElectricalServices
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.ScreenRotation
+import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material.icons.rounded.SwapHoriz
@@ -53,6 +55,7 @@ import androidx.compose.material.icons.rounded.SwipeLeft
 import androidx.compose.material.icons.rounded.SwipeRight
 import androidx.compose.material.icons.rounded.SwipeUp
 import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -131,6 +134,12 @@ internal fun ControlScreen(
     onSelectionRingWidthChange: (Int) -> Unit,
     /** @author bomo 扇形选中圈颜色（ARGB）变更。 */
     onSelectionRingColorChange: (Int) -> Unit,
+    /** @author bomo 扇形悬停超时（毫秒；0 = 禁用自动悬停）变更。 */
+    onHoverTimeoutChange: (Int) -> Unit,
+    /** @author bomo 内圈惯性转动阻尼系数（百分比，85 ~ 98）变更。 */
+    onInnerSpinDampingChange: (Int) -> Unit,
+    /** @author bomo 内圈转动立体感开关变更。 */
+    onInnerSpinDepthEffectChange: (Boolean) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
     /** @author bomo 外圈固定应用未满时用最近使用补齐（开关）。 */
@@ -231,6 +240,14 @@ internal fun ControlScreen(
                                     onFillOuterWithRecentChange = onFillOuterWithRecentChange,
                                 )
                             }
+                            item(key = "radial_hover") {
+                                RadialHoverCard(
+                                    state = state,
+                                    onHoverTimeoutChange = onHoverTimeoutChange,
+                                    onInnerSpinDampingChange = onInnerSpinDampingChange,
+                                    onInnerSpinDepthEffectChange = onInnerSpinDepthEffectChange,
+                                )
+                            }
                         }
                         1 -> {
                             item(key = "more_panel_custom") {
@@ -323,6 +340,121 @@ private fun RadialAppsPolicyCard(
             startAction = { PreferenceIcon(Icons.Rounded.History, state.canChangeSettings) },
         )
     }
+}
+
+/**
+ * @author bomo 扇形悬停滚动：呼出后超时未选择进入悬停（外圈静止、内圈滚轮循环），
+ * 松手惯性按阻尼系数衰减并吸附档位，可选转动立体感。
+ */
+@Composable
+private fun RadialHoverCard(
+    state: FrameworkConnectionState,
+    onHoverTimeoutChange: (Int) -> Unit,
+    onInnerSpinDampingChange: (Int) -> Unit,
+    onInnerSpinDepthEffectChange: (Boolean) -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        HoverTimeoutSlider(
+            confirmedValue = state.settings.hoverTimeoutMs,
+            isUpdating = state.isUpdating,
+            enabled = state.canChangeSettings,
+            onCommit = onHoverTimeoutChange,
+        )
+        DampingSlider(
+            confirmedValue = state.settings.innerSpinDampingPercent,
+            isUpdating = state.isUpdating,
+            enabled = state.canChangeSettings,
+            onCommit = onInnerSpinDampingChange,
+        )
+        SwitchPreference(
+            checked = state.settings.innerSpinDepthEffect,
+            onCheckedChange = onInnerSpinDepthEffectChange,
+            title = stringResource(R.string.inner_spin_depth_title),
+            summary = stringResource(R.string.inner_spin_depth_summary),
+            enabled = state.canChangeSettings,
+            startAction = { PreferenceIcon(Icons.Rounded.Layers, state.canChangeSettings) },
+        )
+    }
+}
+
+/** @author bomo 悬停超时滑条：0 = 禁用自动悬停，有效 1~5 秒（档位 0/1000/2000/3000/4000/5000ms）。 */
+@Composable
+private fun HoverTimeoutSlider(
+    confirmedValue: Int,
+    isUpdating: Boolean,
+    enabled: Boolean,
+    onCommit: (Int) -> Unit,
+) {
+    var draftValue by rememberSaveable { mutableFloatStateOf(confirmedValue.toFloat()) }
+    var isDragging by remember { mutableStateOf(false) }
+    LaunchedEffect(confirmedValue, isUpdating, enabled) {
+        if (!isDragging && !isUpdating) draftValue = confirmedValue.toFloat()
+    }
+    SliderPreference(
+        value = draftValue,
+        onValueChange = { value ->
+            isDragging = true
+            draftValue = ModulePreferences.coerceHoverTimeoutMs(value.roundToInt()).toFloat()
+        },
+        title = stringResource(R.string.hover_timeout_title),
+        summary = stringResource(R.string.hover_timeout_summary),
+        valueText =
+            if (draftValue.roundToInt() <= 0) {
+                stringResource(R.string.hover_timeout_disabled)
+            } else {
+                stringResource(R.string.hover_timeout_seconds, draftValue.roundToInt() / 1000)
+            },
+        enabled = enabled,
+        startAction = { PreferenceIcon(Icons.Rounded.Timer, enabled) },
+        valueRange = 0f..ModulePreferences.MAX_HOVER_TIMEOUT_MS.toFloat(),
+        steps = ModulePreferences.MAX_HOVER_TIMEOUT_MS / 1000 - 1,
+        onValueChangeFinished = {
+            isDragging = false
+            val committed = ModulePreferences.coerceHoverTimeoutMs(draftValue.roundToInt())
+            draftValue = committed.toFloat()
+            if (committed != confirmedValue) onCommit(committed)
+        },
+    )
+}
+
+/** @author bomo 内圈惯性转动阻尼系数滑条（85~98，值越小停得越快）。 */
+@Composable
+private fun DampingSlider(
+    confirmedValue: Int,
+    isUpdating: Boolean,
+    enabled: Boolean,
+    onCommit: (Int) -> Unit,
+) {
+    var draftValue by rememberSaveable { mutableFloatStateOf(confirmedValue.toFloat()) }
+    var isDragging by remember { mutableStateOf(false) }
+    LaunchedEffect(confirmedValue, isUpdating, enabled) {
+        if (!isDragging && !isUpdating) draftValue = confirmedValue.toFloat()
+    }
+    SliderPreference(
+        value = draftValue,
+        onValueChange = { value ->
+            isDragging = true
+            draftValue = ModulePreferences.coerceInnerSpinDampingPercent(value.roundToInt()).toFloat()
+        },
+        title = stringResource(R.string.inner_spin_damping_title),
+        summary = stringResource(R.string.inner_spin_damping_summary),
+        valueText = stringResource(R.string.percent_value, draftValue.roundToInt()),
+        enabled = enabled,
+        startAction = { PreferenceIcon(Icons.Rounded.Speed, enabled) },
+        valueRange =
+            ModulePreferences.MIN_INNER_SPIN_DAMPING_PERCENT.toFloat()..
+                ModulePreferences.MAX_INNER_SPIN_DAMPING_PERCENT.toFloat(),
+        steps =
+            ModulePreferences.MAX_INNER_SPIN_DAMPING_PERCENT -
+                ModulePreferences.MIN_INNER_SPIN_DAMPING_PERCENT - 1,
+        onValueChangeFinished = {
+            isDragging = false
+            val committed =
+                ModulePreferences.coerceInnerSpinDampingPercent(draftValue.roundToInt())
+            draftValue = committed.toFloat()
+            if (committed != confirmedValue) onCommit(committed)
+        },
+    )
 }
 
 @Composable

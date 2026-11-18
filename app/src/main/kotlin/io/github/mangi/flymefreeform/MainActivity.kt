@@ -42,6 +42,9 @@ class MainActivity : ComponentActivity() {
                     onRadialRadiusChange = repository::setRadialRadiusPercent,
                     onSelectionRingWidthChange = repository::setSelectionRingWidthPercent,
                     onSelectionRingColorChange = repository::setSelectionRingColorArgb,
+                    onHoverTimeoutChange = repository::setHoverTimeoutMs,
+                    onInnerSpinDampingChange = repository::setInnerSpinDampingPercent,
+                    onInnerSpinDepthEffectChange = repository::setInnerSpinDepthEffect,
                     onOutsideTapCloseModeChange = repository::setOutsideTapCloseMode,
                     onHandleSwipeUpToMiniEnabledChange =
                         repository::setHandleSwipeUpToMiniEnabled,

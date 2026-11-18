@@ -404,6 +404,9 @@ internal class ColorOsFreeformCoordinator(
                 morePanelCornerRadiusDp = lastSettings.morePanelCornerRadiusDp,
                 morePanelOffsetXDp = panelGeo?.get(2) ?: lastSettings.morePanelOffsetXDp,
                 morePanelOffsetYDp = panelGeo?.get(3) ?: lastSettings.morePanelOffsetYDp,
+                hoverTimeoutMs = lastSettings.hoverTimeoutMs,
+                innerSpinDampingPercent = lastSettings.innerSpinDampingPercent,
+                innerSpinDepthEffect = lastSettings.innerSpinDepthEffect,
             )
             overlay = view
             windowManager.addView(view, params)

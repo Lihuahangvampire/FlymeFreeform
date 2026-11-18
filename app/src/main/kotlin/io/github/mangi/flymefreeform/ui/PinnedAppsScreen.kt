@@ -6,6 +6,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -17,11 +18,15 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -51,6 +56,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.zIndex
 import io.github.mangi.flymefreeform.R
 import io.github.mangi.flymefreeform.apps.InstalledLauncherApp
@@ -61,6 +67,7 @@ import io.github.mangi.flymefreeform.ui.component.captureForTopBar
 import io.github.mangi.flymefreeform.ui.component.rememberTopBarBackdrop
 import io.github.mangi.flymefreeform.ui.component.topBarContainerColor
 import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -68,6 +75,7 @@ import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -90,6 +98,8 @@ internal fun PinnedAppsScreen(
     var pickerQuery by remember { mutableStateOf("") }
     // 本轮添加/移除的目标圈：false=外圈，true=内圈
     var addingToInner by remember { mutableStateOf(false) }
+    // @author bomo 跨圈重复选择待确认：非空时弹「取消 / 覆盖」卡片。
+    var conflictApp by remember { mutableStateOf<InstalledLauncherApp?>(null) }
     // 内圈本地顺序；远端配置回读同步前以它为准
     var localInnerOrder by remember { mutableStateOf<List<ComponentName>?>(null) }
     // 拖动或增删后的本地顺序；远端配置回读同步前以它为准，避免列表闪回旧顺序
@@ -465,7 +475,9 @@ internal fun PinnedAppsScreen(
                                                 ModulePreferences.isToolComponent(app.component) ->
                                                     stringResource(R.string.tool_entry_summary)
                                                 app.component in displayedInner ->
-                                                    stringResource(R.string.inner_apps_section_title)
+                                                    stringResource(R.string.inner_ring_name)
+                                                app.component in displayed ->
+                                                    stringResource(R.string.outer_ring_name)
                                                 else -> app.component.packageName
                                             },
                                         startAction = { AppIcon(app) },
@@ -483,33 +495,41 @@ internal fun PinnedAppsScreen(
                                                 null
                                             },
                                         onClick = {
-                                            if (addingToInner) {
-                                                val updated =
-                                                    if (added) {
+                                            if (added) {
+                                                // 已勾选：从当前目标圈移除
+                                                if (addingToInner) {
+                                                    val updated =
                                                         displayedInner.filterNot { it == app.component }
-                                                    } else {
-                                                        (displayedInner + app.component)
-                                                            .take(ModulePreferences.MAX_INNER_APPS)
-                                                    }
-                                                localInnerOrder = updated
-                                                onInnerPinnedComponentsChange(updated)
-                                            } else {
-                                                // 目标是外圈：同时从内圈移除，避免同一个应用出现在两圈
-                                                val innerUpdated =
-                                                    displayedInner.filterNot { it == app.component }
-                                                if (innerUpdated != displayedInner) {
-                                                    localInnerOrder = innerUpdated
-                                                    onInnerPinnedComponentsChange(innerUpdated)
-                                                }
-                                                val updated =
-                                                    if (added) {
+                                                    localInnerOrder = updated
+                                                    onInnerPinnedComponentsChange(updated)
+                                                } else {
+                                                    val updated =
                                                         displayed.filterNot { it == app.component }
+                                                    localOrder = updated
+                                                    onPinnedComponentsChange(updated)
+                                                }
+                                            } else {
+                                                // 未勾选：检测是否已在另一圈（跨圈重复）
+                                                val otherList =
+                                                    if (addingToInner) displayed else displayedInner
+                                                if (app.component in otherList) {
+                                                    // @author bomo 跨圈重复 → 弹「取消 / 覆盖」卡片。
+                                                    conflictApp = app
+                                                } else {
+                                                    if (addingToInner) {
+                                                        val updated =
+                                                            (displayedInner + app.component)
+                                                                .take(ModulePreferences.MAX_INNER_APPS)
+                                                        localInnerOrder = updated
+                                                        onInnerPinnedComponentsChange(updated)
                                                     } else {
-                                                        (displayed + app.component)
-                                                            .take(ModulePreferences.OUTER_PINNED_APPS)
+                                                        val updated =
+                                                            (displayed + app.component)
+                                                                .take(ModulePreferences.OUTER_PINNED_APPS)
+                                                        localOrder = updated
+                                                        onPinnedComponentsChange(updated)
                                                     }
-                                                localOrder = updated
-                                                onPinnedComponentsChange(updated)
+                                                }
                                             }
                                         },
                                         onClickLabel =
@@ -535,6 +555,80 @@ internal fun PinnedAppsScreen(
                                                     ),
                                     )
                                 }
+                        }
+                    }
+                }
+            }
+            // @author bomo 跨圈重复选择：弹「取消 / 覆盖」卡片。
+            conflictApp?.let { app ->
+                Dialog(onDismissRequest = { conflictApp = null }) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(20.dp)) {
+                            Text(
+                                text = stringResource(R.string.duplicate_app_title),
+                                style = MiuixTheme.textStyles.subtitle,
+                                color = MiuixTheme.colorScheme.onSurface,
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text =
+                                    stringResource(
+                                        R.string.duplicate_app_message,
+                                        app.label,
+                                        if (app.component in displayedInner) {
+                                            stringResource(R.string.inner_ring_name)
+                                        } else {
+                                            stringResource(R.string.outer_ring_name)
+                                        },
+                                        if (addingToInner) {
+                                            stringResource(R.string.inner_ring_name)
+                                        } else {
+                                            stringResource(R.string.outer_ring_name)
+                                        },
+                                    ),
+                                style = MiuixTheme.textStyles.body1,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                            Spacer(modifier = Modifier.height(20.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                            ) {
+                                TextButton(
+                                    text = stringResource(R.string.action_cancel),
+                                    onClick = { conflictApp = null },
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(
+                                    onClick = {
+                                        // 覆盖：从另一圈移除该应用，再加入当前目标圈。
+                                        if (addingToInner) {
+                                            val outerUpdated =
+                                                displayed.filterNot { it == app.component }
+                                            localOrder = outerUpdated
+                                            onPinnedComponentsChange(outerUpdated)
+                                            val innerUpdated =
+                                                (displayedInner + app.component)
+                                                    .take(ModulePreferences.MAX_INNER_APPS)
+                                            localInnerOrder = innerUpdated
+                                            onInnerPinnedComponentsChange(innerUpdated)
+                                        } else {
+                                            val innerUpdated =
+                                                displayedInner.filterNot { it == app.component }
+                                            localInnerOrder = innerUpdated
+                                            onInnerPinnedComponentsChange(innerUpdated)
+                                            val outerUpdated =
+                                                (displayed + app.component)
+                                                    .take(ModulePreferences.OUTER_PINNED_APPS)
+                                            localOrder = outerUpdated
+                                            onPinnedComponentsChange(outerUpdated)
+                                        }
+                                        conflictApp = null
+                                    },
+                                ) {
+                                    Text(stringResource(R.string.action_overwrite))
+                                }
+                            }
                         }
                     }
                 }

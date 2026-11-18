@@ -44,6 +44,12 @@ internal data class ModuleSettingsSnapshot(
         ModulePreferences.DEFAULT_HANDLE_SWIPE_UP_TO_MINI_ENABLED,
     val pauseInLandscape: Boolean = ModulePreferences.DEFAULT_PAUSE_IN_LANDSCAPE,
     val pauseInGameMode: Boolean = ModulePreferences.DEFAULT_PAUSE_IN_GAME_MODE,
+    /** @author bomo 扇形悬停超时（毫秒；0 = 禁用自动悬停）。 */
+    val hoverTimeoutMs: Int = ModulePreferences.DEFAULT_HOVER_TIMEOUT_MS,
+    /** @author bomo 内圈惯性转动阻尼系数（百分比，95 = 0.95/帧）。 */
+    val innerSpinDampingPercent: Int = ModulePreferences.DEFAULT_INNER_SPIN_DAMPING_PERCENT,
+    /** @author bomo 内圈转动立体感开关（默认关）。 */
+    val innerSpinDepthEffect: Boolean = ModulePreferences.DEFAULT_INNER_SPIN_DEPTH_EFFECT,
 ) {
     fun isPausedByEnvironment(landscape: Boolean, gameMode: Boolean): Boolean =
         (pauseInLandscape && landscape) || (pauseInGameMode && gameMode)
@@ -118,6 +124,18 @@ internal data class ModuleSettingsSnapshot(
             .putBoolean(
                 ModulePreferences.KEY_FILL_OUTER_WITH_RECENT,
                 fillOuterWithRecent,
+            )
+            .putInt(
+                ModulePreferences.KEY_HOVER_TIMEOUT_MS,
+                ModulePreferences.coerceHoverTimeoutMs(hoverTimeoutMs),
+            )
+            .putInt(
+                ModulePreferences.KEY_INNER_SPIN_DAMPING_PERCENT,
+                ModulePreferences.coerceInnerSpinDampingPercent(innerSpinDampingPercent),
+            )
+            .putBoolean(
+                ModulePreferences.KEY_INNER_SPIN_DEPTH_EFFECT,
+                innerSpinDepthEffect,
             )
         if (pinsSaved) {
             editor.putString(
@@ -261,6 +279,25 @@ internal data class ModuleSettingsSnapshot(
                     ModulePreferences.KEY_FILL_OUTER_WITH_RECENT,
                     ModulePreferences.DEFAULT_FILL_OUTER_WITH_RECENT,
                 )
+            val hoverTimeoutMs =
+                ModulePreferences.coerceHoverTimeoutMs(
+                    preferences.getInt(
+                        ModulePreferences.KEY_HOVER_TIMEOUT_MS,
+                        ModulePreferences.DEFAULT_HOVER_TIMEOUT_MS,
+                    ),
+                )
+            val innerSpinDampingPercent =
+                ModulePreferences.coerceInnerSpinDampingPercent(
+                    preferences.getInt(
+                        ModulePreferences.KEY_INNER_SPIN_DAMPING_PERCENT,
+                        ModulePreferences.DEFAULT_INNER_SPIN_DAMPING_PERCENT,
+                    ),
+                )
+            val innerSpinDepthEffect =
+                preferences.getBoolean(
+                    ModulePreferences.KEY_INNER_SPIN_DEPTH_EFFECT,
+                    ModulePreferences.DEFAULT_INNER_SPIN_DEPTH_EFFECT,
+                )
             val pinsSaved = preferences.contains(ModulePreferences.KEY_CORNER_PINS)
             val innerPinsSaved = preferences.contains(ModulePreferences.KEY_CORNER_INNER_PINS)
             val pins =
@@ -310,6 +347,9 @@ internal data class ModuleSettingsSnapshot(
                     ModulePreferences.KEY_PAUSE_IN_GAME_MODE,
                     ModulePreferences.DEFAULT_PAUSE_IN_GAME_MODE,
                 ),
+                hoverTimeoutMs = hoverTimeoutMs,
+                innerSpinDampingPercent = innerSpinDampingPercent,
+                innerSpinDepthEffect = innerSpinDepthEffect,
             )
         }
 
