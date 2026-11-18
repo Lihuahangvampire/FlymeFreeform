@@ -220,6 +220,12 @@ internal class FrameworkConnectionRepository(
     fun setInnerSpinDepthEffect(enabled: Boolean) =
         updateSettings { it.copy(innerSpinDepthEffect = enabled) }
 
+    /** @author bomo 设置悬停消失超时（毫秒；0 = 不自动消失）。 */
+    fun setHoverDismissTimeoutMs(millis: Int) =
+        updateSettings {
+            it.copy(hoverDismissTimeoutMs = ModulePreferences.coerceHoverDismissTimeoutMs(millis))
+        }
+
     fun setOutsideTapCloseMode(mode: OutsideTapCloseMode) =
         updateSettings { it.copy(outsideTapCloseMode = mode) }
 

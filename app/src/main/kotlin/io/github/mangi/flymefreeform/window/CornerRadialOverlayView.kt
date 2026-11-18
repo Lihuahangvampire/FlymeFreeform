@@ -215,6 +215,8 @@ internal class CornerRadialOverlayView(
     private var innerSpinDampingPercent = ModulePreferences.DEFAULT_INNER_SPIN_DAMPING_PERCENT
     /** @author bomo 内圈转动立体感开关（默认关）。 */
     private var innerSpinDepthEffect = ModulePreferences.DEFAULT_INNER_SPIN_DEPTH_EFFECT
+    /** @author bomo 悬停消失超时（毫秒；0 = 不自动消失）。 */
+    private var hoverDismissTimeoutMs = ModulePreferences.DEFAULT_HOVER_DISMISS_TIMEOUT_MS
     /** @author bomo 是否已进入悬停模式（外圈静止、内圈可滚动转动）。 */
     private var hoverMode = false
     /** @author bomo 内圈角度偏移（deg）：悬停模式下随手指转动、惯性衰减、吸附档位。 */
@@ -248,6 +250,8 @@ internal class CornerRadialOverlayView(
     private val dismissFallback = Runnable(::completeRadialExit)
     /** @author bomo 悬停计时器：超时未选择 → 进入悬停模式（外圈静止、内圈可转动）。 */
     private val hoverTimeout = Runnable(::enterHoverMode)
+    /** @author bomo 悬停消失计时器：进入悬停后静止超过此时长 → 自动关闭扇形（0 = 不自动关闭）。 */
+    private val hoverDismissTimeout = Runnable(::requestDismiss)
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
@@ -295,6 +299,8 @@ internal class CornerRadialOverlayView(
         innerSpinDampingPercent: Int = ModulePreferences.DEFAULT_INNER_SPIN_DAMPING_PERCENT,
         /** @author bomo 内圈转动立体感开关（默认关）。 */
         innerSpinDepthEffect: Boolean = ModulePreferences.DEFAULT_INNER_SPIN_DEPTH_EFFECT,
+        /** @author bomo 悬停消失超时（毫秒；0 = 不自动消失）。 */
+        hoverDismissTimeoutMs: Int = ModulePreferences.DEFAULT_HOVER_DISMISS_TIMEOUT_MS,
     ) {
         check(!isAttachedToWindow) { "Overlay must be initialized before it is attached" }
         this.side = side
@@ -332,6 +338,8 @@ internal class CornerRadialOverlayView(
         this.innerSpinDampingPercent =
             ModulePreferences.coerceInnerSpinDampingPercent(innerSpinDampingPercent)
         this.innerSpinDepthEffect = innerSpinDepthEffect
+        this.hoverDismissTimeoutMs =
+            ModulePreferences.coerceHoverDismissTimeoutMs(hoverDismissTimeoutMs)
         // @author bomo 每次呼出重置悬停状态（不跨呼出残留转动角度/速度/提示）。
         hoverMode = false
         innerAngleOffset = 0f
@@ -362,6 +370,7 @@ internal class CornerRadialOverlayView(
         postDelayed(timeout, GESTURE_TIMEOUT_MS)
         // @author bomo 启动悬停计时器：超时未选择 → 进入悬停模式（0 = 禁用）。
         removeCallbacks(hoverTimeout)
+        removeCallbacks(hoverDismissTimeout)
         if (hoverTimeoutMs > 0) {
             postDelayed(hoverTimeout, hoverTimeoutMs.toLong())
         }
@@ -376,6 +385,11 @@ internal class CornerRadialOverlayView(
         // @author bomo 悬停模式下手势语义由内圈转动接管；非悬停模式重置悬停计时器，
         // 让「持续滑动 = 仍在选择」不会误触发悬停。
         if (hoverMode) {
+            // @author bomo 悬停模式下手势活动重置消失计时器（持续操作不自动关闭）。
+            removeCallbacks(hoverDismissTimeout)
+            if (hoverDismissTimeoutMs > 0) {
+                postDelayed(hoverDismissTimeout, hoverDismissTimeoutMs.toLong())
+            }
             handleInnerSpinDrag(x, y)
             return selectedIndex
         }
@@ -418,6 +432,7 @@ internal class CornerRadialOverlayView(
         removeCallbacks(timeout)
         removeCallbacks(dismissFallback)
         removeCallbacks(hoverTimeout)
+        removeCallbacks(hoverDismissTimeout)
         var failure: Throwable? = null
         try {
             if (lifecycleRegistry.currentState.isAtLeast(Lifecycle.State.STARTED)) {
@@ -1993,9 +2008,20 @@ internal class CornerRadialOverlayView(
         return slotTarget(index)
     }
 
-    /** @author bomo 悬停模式且内圈 ≥5 时启用滚轮转动；内圈 <5 均匀铺满不滚。 */
+    /** @author bomo 悬停模式且内圈 ≥2 时启用滚轮转动；1 个或 0 个不滚（静止显示）。 */
     private fun innerSpinEnabled(): Boolean =
-        hoverMode && innerApps().size >= INNER_SPIN_MAX_SLOTS
+        hoverMode && innerApps().size >= 2
+
+    /**
+     * @author bomo 滚轮档位角距（deg）：内圈 > 可视窗口（5 档）时用固定 16.8° 循环；
+     * 内圈 ≤5 时按内圈数量均匀铺满 84° 弧（首尾相接仍可循环转动）。
+     */
+    private fun innerSpinStepDegrees(count: Int): Float =
+        when {
+            count > INNER_SPIN_MAX_SLOTS -> INNER_SPIN_STEP_DEGREES
+            count > 0 -> INNER_SPAN_DEGREES / count
+            else -> INNER_SPAN_DEGREES
+        }
 
     /**
      * @author bomo 应用 k 在滚轮窗口内的位置（度，[0,84)）；窗口外返回 null。
@@ -2004,8 +2030,9 @@ internal class CornerRadialOverlayView(
      */
     private fun innerSpinWindowPosition(k: Int, count: Int): Float? {
         if (count <= 0) return null
-        val ringLength = count * INNER_SPIN_STEP_DEGREES
-        val raw = (k + 0.5f) * INNER_SPIN_STEP_DEGREES + innerAngleOffset
+        val step = innerSpinStepDegrees(count)
+        val ringLength = count * step
+        val raw = (k + 0.5f) * step + innerAngleOffset
         val wrapped = ((raw % ringLength) + ringLength) % ringLength
         return wrapped.takeIf { it < INNER_SPAN_DEGREES }
     }
@@ -2035,6 +2062,8 @@ internal class CornerRadialOverlayView(
             return emptyList<GesturePoint>() to emptyList<Int>()
         }
         if (!innerSpinEnabled()) {
+            // @author bomo 非悬停：内圈 > 可视窗口（5 档）时只显示前 5 个，其余进悬停滚轮。
+            val visibleCount = innerApps.size.coerceAtMost(INNER_SPIN_MAX_SLOTS)
             val centers =
                 RadialGeometry
                     .layoutInner(
@@ -2042,11 +2071,11 @@ internal class CornerRadialOverlayView(
                         width = safeWidth,
                         height = safeHeight,
                         radiusInner = innerRadius,
-                        itemCount = innerApps.size,
+                        itemCount = visibleCount,
                         offsetX = radialInsets.left,
                         offsetY = radialInsets.top,
                     ).itemCenters
-            return centers to innerApps.indices.map { outerCount + it }
+            return centers to innerApps.indices.take(visibleCount).map { outerCount + it }
         }
         val origin =
             GesturePoint(
@@ -2078,6 +2107,11 @@ internal class CornerRadialOverlayView(
         selectedIndex = null
         selectedIndexState.intValue = NO_SELECTION
         refreshInnerSpinLayout()
+        // @author bomo 进入悬停后启动消失计时器（静止超时自动关闭；0 = 不自动关闭）。
+        removeCallbacks(hoverDismissTimeout)
+        if (hoverDismissTimeoutMs > 0) {
+            postDelayed(hoverDismissTimeout, hoverDismissTimeoutMs.toLong())
+        }
         if (!hoverHintShown) {
             hoverHintShown = true
             triggerHoverHint()
@@ -2162,8 +2196,10 @@ internal class CornerRadialOverlayView(
         resetInnerSpinDragTracking()
         if (target != null && target in catalog.radialApps.indices) {
             dismissAnimated(catalog.radialApps[target])
+            return
         }
-        // 未选中任何应用 → 保持悬停（外圈静止、内圈可继续转动）。
+        // @author bomo 点击非应用区域（外圈空白/扇形外）→ 直接关闭扇形。
+        dismissAnimated()
     }
 
     private fun resetInnerSpinDragTracking() {
@@ -2210,7 +2246,8 @@ internal class CornerRadialOverlayView(
     /** @author bomo 吸附到最近档位（短弹簧动画），完成后规范化偏移避免累积误差。 */
     private fun startInnerSpinSnap() {
         val start = innerAngleOffset
-        val target = round(innerAngleOffset / INNER_SPIN_STEP_DEGREES) * INNER_SPIN_STEP_DEGREES
+        val step = innerSpinStepDegrees(innerApps().size)
+        val target = round(innerAngleOffset / step) * step
         if (abs(target - start) < 0.01f) {
             normalizeInnerSpinOffset()
             return
@@ -2234,7 +2271,7 @@ internal class CornerRadialOverlayView(
     private fun normalizeInnerSpinOffset() {
         val count = innerApps().size
         if (count > 0) {
-            val ringLength = count * INNER_SPIN_STEP_DEGREES
+            val ringLength = count * innerSpinStepDegrees(count)
             var offset = ((innerAngleOffset % ringLength) + ringLength) % ringLength
             if (offset > ringLength / 2f) offset -= ringLength
             innerAngleOffset = offset
@@ -2504,6 +2541,7 @@ internal class CornerRadialOverlayView(
         dismissing = true
         removeCallbacks(timeout)
         removeCallbacks(hoverTimeout)
+        removeCallbacks(hoverDismissTimeout)
         innerSpinAnimator?.cancel()
         innerSpinAnimator = null
         exitRequestState.value = ExitRequest(pendingCommit, entryProgress.value)

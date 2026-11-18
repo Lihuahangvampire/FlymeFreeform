@@ -50,6 +50,8 @@ internal data class ModuleSettingsSnapshot(
     val innerSpinDampingPercent: Int = ModulePreferences.DEFAULT_INNER_SPIN_DAMPING_PERCENT,
     /** @author bomo 内圈转动立体感开关（默认关）。 */
     val innerSpinDepthEffect: Boolean = ModulePreferences.DEFAULT_INNER_SPIN_DEPTH_EFFECT,
+    /** @author bomo 悬停消失超时（毫秒；0 = 不自动消失）。 */
+    val hoverDismissTimeoutMs: Int = ModulePreferences.DEFAULT_HOVER_DISMISS_TIMEOUT_MS,
 ) {
     fun isPausedByEnvironment(landscape: Boolean, gameMode: Boolean): Boolean =
         (pauseInLandscape && landscape) || (pauseInGameMode && gameMode)
@@ -136,6 +138,10 @@ internal data class ModuleSettingsSnapshot(
             .putBoolean(
                 ModulePreferences.KEY_INNER_SPIN_DEPTH_EFFECT,
                 innerSpinDepthEffect,
+            )
+            .putInt(
+                ModulePreferences.KEY_HOVER_DISMISS_TIMEOUT_MS,
+                ModulePreferences.coerceHoverDismissTimeoutMs(hoverDismissTimeoutMs),
             )
         if (pinsSaved) {
             editor.putString(
@@ -298,6 +304,13 @@ internal data class ModuleSettingsSnapshot(
                     ModulePreferences.KEY_INNER_SPIN_DEPTH_EFFECT,
                     ModulePreferences.DEFAULT_INNER_SPIN_DEPTH_EFFECT,
                 )
+            val hoverDismissTimeoutMs =
+                ModulePreferences.coerceHoverDismissTimeoutMs(
+                    preferences.getInt(
+                        ModulePreferences.KEY_HOVER_DISMISS_TIMEOUT_MS,
+                        ModulePreferences.DEFAULT_HOVER_DISMISS_TIMEOUT_MS,
+                    ),
+                )
             val pinsSaved = preferences.contains(ModulePreferences.KEY_CORNER_PINS)
             val innerPinsSaved = preferences.contains(ModulePreferences.KEY_CORNER_INNER_PINS)
             val pins =
@@ -350,6 +363,7 @@ internal data class ModuleSettingsSnapshot(
                 hoverTimeoutMs = hoverTimeoutMs,
                 innerSpinDampingPercent = innerSpinDampingPercent,
                 innerSpinDepthEffect = innerSpinDepthEffect,
+                hoverDismissTimeoutMs = hoverDismissTimeoutMs,
             )
         }
 

@@ -45,6 +45,7 @@ class MainActivity : ComponentActivity() {
                     onHoverTimeoutChange = repository::setHoverTimeoutMs,
                     onInnerSpinDampingChange = repository::setInnerSpinDampingPercent,
                     onInnerSpinDepthEffectChange = repository::setInnerSpinDepthEffect,
+                    onHoverDismissTimeoutChange = repository::setHoverDismissTimeoutMs,
                     onOutsideTapCloseModeChange = repository::setOutsideTapCloseMode,
                     onHandleSwipeUpToMiniEnabledChange =
                         repository::setHandleSwipeUpToMiniEnabled,

@@ -42,6 +42,7 @@ import androidx.compose.material.icons.rounded.ColorLens
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.ElectricalServices
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.HourglassEmpty
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.PowerSettingsNew
@@ -140,6 +141,8 @@ internal fun ControlScreen(
     onInnerSpinDampingChange: (Int) -> Unit,
     /** @author bomo 内圈转动立体感开关变更。 */
     onInnerSpinDepthEffectChange: (Boolean) -> Unit,
+    /** @author bomo 悬停消失超时（毫秒；0 = 不自动消失）变更。 */
+    onHoverDismissTimeoutChange: (Int) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
     /** @author bomo 外圈固定应用未满时用最近使用补齐（开关）。 */
@@ -246,6 +249,7 @@ internal fun ControlScreen(
                                     onHoverTimeoutChange = onHoverTimeoutChange,
                                     onInnerSpinDampingChange = onInnerSpinDampingChange,
                                     onInnerSpinDepthEffectChange = onInnerSpinDepthEffectChange,
+                                    onHoverDismissTimeoutChange = onHoverDismissTimeoutChange,
                                 )
                             }
                         }
@@ -352,6 +356,7 @@ private fun RadialHoverCard(
     onHoverTimeoutChange: (Int) -> Unit,
     onInnerSpinDampingChange: (Int) -> Unit,
     onInnerSpinDepthEffectChange: (Boolean) -> Unit,
+    onHoverDismissTimeoutChange: (Int) -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         HoverTimeoutSlider(
@@ -359,6 +364,12 @@ private fun RadialHoverCard(
             isUpdating = state.isUpdating,
             enabled = state.canChangeSettings,
             onCommit = onHoverTimeoutChange,
+        )
+        HoverDismissSlider(
+            confirmedValue = state.settings.hoverDismissTimeoutMs,
+            isUpdating = state.isUpdating,
+            enabled = state.canChangeSettings,
+            onCommit = onHoverDismissTimeoutChange,
         )
         DampingSlider(
             confirmedValue = state.settings.innerSpinDampingPercent,
@@ -377,7 +388,7 @@ private fun RadialHoverCard(
     }
 }
 
-/** @author bomo 悬停超时滑条：0 = 禁用自动悬停，有效 1~5 秒（档位 0/1000/2000/3000/4000/5000ms）。 */
+/** @author bomo 悬停超时滑条：0 = 禁用自动悬停，0.25~2 秒（步进 0.25s）。 */
 @Composable
 private fun HoverTimeoutSlider(
     confirmedValue: Int,
@@ -402,15 +413,75 @@ private fun HoverTimeoutSlider(
             if (draftValue.roundToInt() <= 0) {
                 stringResource(R.string.hover_timeout_disabled)
             } else {
-                stringResource(R.string.hover_timeout_seconds, draftValue.roundToInt() / 1000)
+                stringResource(
+                    R.string.hover_timeout_seconds,
+                    formatHoverSeconds(draftValue.roundToInt()),
+                )
             },
         enabled = enabled,
         startAction = { PreferenceIcon(Icons.Rounded.Timer, enabled) },
         valueRange = 0f..ModulePreferences.MAX_HOVER_TIMEOUT_MS.toFloat(),
-        steps = ModulePreferences.MAX_HOVER_TIMEOUT_MS / 1000 - 1,
+        steps =
+            ModulePreferences.MAX_HOVER_TIMEOUT_MS /
+                ModulePreferences.HOVER_TIMEOUT_STEP_MS - 1,
         onValueChangeFinished = {
             isDragging = false
             val committed = ModulePreferences.coerceHoverTimeoutMs(draftValue.roundToInt())
+            draftValue = committed.toFloat()
+            if (committed != confirmedValue) onCommit(committed)
+        },
+    )
+}
+
+/** @author bomo 把 250ms 步进的悬停超时毫秒值格式化为「0.25/0.5/0.75/1/1.25…」秒文案。 */
+private fun formatHoverSeconds(ms: Int): String {
+    val quarters = ms / ModulePreferences.HOVER_TIMEOUT_STEP_MS
+    val whole = quarters / 4
+    return when (quarters % 4) {
+        0 -> "$whole"
+        1 -> "$whole.25"
+        2 -> "$whole.5"
+        else -> "$whole.75"
+    }
+}
+
+/** @author bomo 悬停消失超时滑条：0 = 不自动消失，1~10 秒（步进 1s）。 */
+@Composable
+private fun HoverDismissSlider(
+    confirmedValue: Int,
+    isUpdating: Boolean,
+    enabled: Boolean,
+    onCommit: (Int) -> Unit,
+) {
+    var draftValue by rememberSaveable { mutableFloatStateOf(confirmedValue.toFloat()) }
+    var isDragging by remember { mutableStateOf(false) }
+    LaunchedEffect(confirmedValue, isUpdating, enabled) {
+        if (!isDragging && !isUpdating) draftValue = confirmedValue.toFloat()
+    }
+    SliderPreference(
+        value = draftValue,
+        onValueChange = { value ->
+            isDragging = true
+            draftValue = ModulePreferences.coerceHoverDismissTimeoutMs(value.roundToInt()).toFloat()
+        },
+        title = stringResource(R.string.hover_dismiss_timeout_title),
+        summary = stringResource(R.string.hover_dismiss_timeout_summary),
+        valueText =
+            if (draftValue.roundToInt() <= 0) {
+                stringResource(R.string.hover_dismiss_timeout_disabled)
+            } else {
+                stringResource(R.string.hover_dismiss_timeout_seconds, draftValue.roundToInt() / 1000)
+            },
+        enabled = enabled,
+        startAction = { PreferenceIcon(Icons.Rounded.HourglassEmpty, enabled) },
+        valueRange = 0f..ModulePreferences.MAX_HOVER_DISMISS_TIMEOUT_MS.toFloat(),
+        steps =
+            ModulePreferences.MAX_HOVER_DISMISS_TIMEOUT_MS /
+                ModulePreferences.HOVER_DISMISS_TIMEOUT_STEP_MS - 1,
+        onValueChangeFinished = {
+            isDragging = false
+            val committed =
+                ModulePreferences.coerceHoverDismissTimeoutMs(draftValue.roundToInt())
             draftValue = committed.toFloat()
             if (committed != confirmedValue) onCommit(committed)
         },

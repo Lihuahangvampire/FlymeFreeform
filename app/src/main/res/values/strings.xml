@@ -78,7 +78,11 @@
     <string name="hover_timeout_title">悬停超时</string>
     <string name="hover_timeout_summary">呼出后超过此时长未选择，外圈静止、内圈变为可滚动；0 为禁用</string>
     <string name="hover_timeout_disabled">禁用</string>
-    <string name="hover_timeout_seconds">%1$d 秒</string>
+    <string name="hover_timeout_seconds">%1$s 秒</string>
+    <string name="hover_dismiss_timeout_title">悬停消失超时</string>
+    <string name="hover_dismiss_timeout_summary">进入悬停后静止超过此时长自动关闭扇形；0 为不自动消失</string>
+    <string name="hover_dismiss_timeout_disabled">不自动消失</string>
+    <string name="hover_dismiss_timeout_seconds">%1$d 秒</string>
     <string name="inner_spin_damping_title">内圈惯性阻尼</string>
     <string name="inner_spin_damping_summary">松手后内圈转动衰减快慢；值越小停得越快</string>
     <string name="inner_spin_depth_title">内圈转动立体感</string>
@@ -101,7 +105,7 @@
     <string name="select_apps_action">选择应用</string>
     <string name="tool_entry_summary">侧边栏工具</string>
     <string name="outer_apps_section_title">外圈应用（最多 6 个）</string>
-    <string name="inner_apps_section_title">内圈应用（最多 5 个）</string>
+    <string name="inner_apps_section_title">内圈应用</string>
     <string name="inner_apps_empty">还没有内圈应用</string>
     <string name="inner_apps_empty_summary">内圈应用显示在外圈的内侧第二圈</string>
     <string name="add_named_app_action">添加 %1$s</string>

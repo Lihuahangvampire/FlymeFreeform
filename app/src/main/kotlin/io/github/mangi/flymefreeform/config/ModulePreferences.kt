@@ -116,16 +116,16 @@ internal object ModulePreferences {
     const val MAX_TRIGGER_EXTENT_DP = MAX_CORNER_TRIGGER_RANGE_DP
 
     /**
-     * 扇形最多固定几个应用（不含「更多」）：外圈最多 6 个 + 内圈最多 5 个 = 11。
-     * 固定顺序即圈层顺序：前 6 个在外圈，第 7~11 个进内圈。
+     * 外圈固定应用编码的宽松上限（历史兼容值）：外圈实际最多显示 [OUTER_PINNED_APPS] 个，
+     * 内圈独立存储且数量无限制（见 [MAX_INNER_APPS]）。
      */
     const val MAX_PINNED_APPS = 11
 
     /** 外圈应用上限。 */
     const val OUTER_PINNED_APPS = 6
 
-    /** 内圈应用上限。 */
-    const val MAX_INNER_APPS = 5
+    /** 内圈应用数量上限：无限制（滚轮循环展示，可视窗口最多 5 个档位由渲染层决定）。 */
+    const val MAX_INNER_APPS = Int.MAX_VALUE
 
     /** 「最近小窗」区块最多展示几个最近应用；超出按时间截断（最近的在最左）。 */
     const val MAX_RECENT_FREEFORM = 8
@@ -208,13 +208,14 @@ internal object ModulePreferences {
 
     /**
      * @author bomo 扇形悬停超时（毫秒）：呼出后超过此时长仍未选择，进入「悬停模式」
-     * （外圈静止、内圈可滚动转动）。0 = 禁用自动悬停；有效范围 1000~5000ms，默认 2000ms。
-     * 写入方是模块 App（设置界面滑条），system_server 每次呼出扇形时按只读取值。
+     * （外圈静止、内圈可滚动转动）。0 = 禁用自动悬停；有效范围 250~2000ms，步进 250ms，
+     * 默认 2000ms。写入方是模块 App（设置界面滑条），system_server 每次呼出扇形时按只读取值。
      */
     const val KEY_HOVER_TIMEOUT_MS = "hover_timeout_ms_v1"
     const val DEFAULT_HOVER_TIMEOUT_MS = 2000
-    const val MIN_HOVER_TIMEOUT_MS = 1000
-    const val MAX_HOVER_TIMEOUT_MS = 5000
+    const val MIN_HOVER_TIMEOUT_MS = 250
+    const val MAX_HOVER_TIMEOUT_MS = 2000
+    const val HOVER_TIMEOUT_STEP_MS = 250
 
     /**
      * @author bomo 内圈惯性转动阻尼系数（百分比，95 = 0.95/帧）：值越小停得越快。
@@ -229,12 +230,30 @@ internal object ModulePreferences {
     const val KEY_INNER_SPIN_DEPTH_EFFECT = "inner_spin_depth_effect_v1"
     const val DEFAULT_INNER_SPIN_DEPTH_EFFECT = false
 
+    /**
+     * @author bomo 悬停消失超时（毫秒）：进入悬停模式后静止超过此时长自动关闭扇形。
+     * 0 = 不自动消失；有效范围 1000~10000ms，步进 1000ms，默认 5000ms。
+     */
+    const val KEY_HOVER_DISMISS_TIMEOUT_MS = "hover_dismiss_timeout_ms_v1"
+    const val DEFAULT_HOVER_DISMISS_TIMEOUT_MS = 5000
+    const val MIN_HOVER_DISMISS_TIMEOUT_MS = 1000
+    const val MAX_HOVER_DISMISS_TIMEOUT_MS = 10000
+    const val HOVER_DISMISS_TIMEOUT_STEP_MS = 1000
+
     fun coerceHoverTimeoutMs(value: Int): Int =
         when {
             value <= 0 -> 0
-            value < MIN_HOVER_TIMEOUT_MS -> MIN_HOVER_TIMEOUT_MS
-            value > MAX_HOVER_TIMEOUT_MS -> MAX_HOVER_TIMEOUT_MS
-            else -> value
+            else ->
+                (value / HOVER_TIMEOUT_STEP_MS * HOVER_TIMEOUT_STEP_MS)
+                    .coerceIn(MIN_HOVER_TIMEOUT_MS, MAX_HOVER_TIMEOUT_MS)
+        }
+
+    fun coerceHoverDismissTimeoutMs(value: Int): Int =
+        when {
+            value <= 0 -> 0
+            else ->
+                (value / HOVER_DISMISS_TIMEOUT_STEP_MS * HOVER_DISMISS_TIMEOUT_STEP_MS)
+                    .coerceIn(MIN_HOVER_DISMISS_TIMEOUT_MS, MAX_HOVER_DISMISS_TIMEOUT_MS)
         }
 
     fun coerceInnerSpinDampingPercent(value: Int): Int =

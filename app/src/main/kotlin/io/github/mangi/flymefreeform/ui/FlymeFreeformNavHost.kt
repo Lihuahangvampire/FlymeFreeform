@@ -54,6 +54,8 @@ internal fun FlymeFreeformNavHost(
     onInnerSpinDampingChange: (Int) -> Unit,
     /** @author bomo 内圈转动立体感开关变更。 */
     onInnerSpinDepthEffectChange: (Boolean) -> Unit,
+    /** @author bomo 悬停消失超时（毫秒；0 = 不自动消失）变更。 */
+    onHoverDismissTimeoutChange: (Int) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
     /** @author bomo 外圈固定应用未满时用最近使用补齐（开关）。 */
@@ -105,6 +107,7 @@ internal fun FlymeFreeformNavHost(
                         onHoverTimeoutChange = onHoverTimeoutChange,
                         onInnerSpinDampingChange = onInnerSpinDampingChange,
                         onInnerSpinDepthEffectChange = onInnerSpinDepthEffectChange,
+                        onHoverDismissTimeoutChange = onHoverDismissTimeoutChange,
                         onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
                         onHandleSwipeUpToMiniEnabledChange =
                             onHandleSwipeUpToMiniEnabledChange,

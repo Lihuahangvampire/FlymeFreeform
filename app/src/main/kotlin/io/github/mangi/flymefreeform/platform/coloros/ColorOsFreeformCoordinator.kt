@@ -407,6 +407,7 @@ internal class ColorOsFreeformCoordinator(
                 hoverTimeoutMs = lastSettings.hoverTimeoutMs,
                 innerSpinDampingPercent = lastSettings.innerSpinDampingPercent,
                 innerSpinDepthEffect = lastSettings.innerSpinDepthEffect,
+                hoverDismissTimeoutMs = lastSettings.hoverDismissTimeoutMs,
             )
             overlay = view
             windowManager.addView(view, params)

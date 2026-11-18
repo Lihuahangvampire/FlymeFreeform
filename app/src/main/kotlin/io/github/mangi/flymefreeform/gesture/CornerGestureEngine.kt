@@ -114,7 +114,10 @@ internal class CornerGestureEngine {
 
         val inward = if (activeSide == CornerSide.Left) x - originX else originX - x
         val upward = originY - y
-        if (inward < -config.reverseTolerance || upward < -config.reverseTolerance) {
+        // @author bomo 反向取消只在扇形尚未激活（未 claim）阶段生效：一旦扇形已呼出，
+        // 手指在内圈弧上绕圆心转动会相对按下点产生反向位移，若继续判 cancel 会打断
+        // 悬停滚轮拖动。claim 后手势交给 overlay 管理，由松手决定提交/关闭。
+        if (!claimed && (inward < -config.reverseTolerance || upward < -config.reverseTolerance)) {
             return cancel()
         }
         if (!claimed) {
