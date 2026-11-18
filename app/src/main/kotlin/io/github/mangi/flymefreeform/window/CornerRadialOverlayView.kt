@@ -219,6 +219,11 @@ internal class CornerRadialOverlayView(
     private var hoverDismissTimeoutMs = ModulePreferences.DEFAULT_HOVER_DISMISS_TIMEOUT_MS
     /** @author bomo 是否已进入悬停模式（外圈静止、内圈可滚动转动）。 */
     private var hoverMode = false
+    /**
+     * @author bomo 悬停是否已「稳定」（第一次呼出手势已松手）。
+     * 稳定前的第一次松手只进入悬停（不判定打开/消失），稳定后的触摸才做 tap 判定。
+     */
+    private var hoverSettled = false
     /** @author bomo 内圈角度偏移（deg）：悬停模式下随手指转动、惯性衰减、吸附档位。 */
     private var innerAngleOffset = 0f
     /** @author bomo 内圈惯性转动角速度（deg/s）：松手记录、逐帧衰减。 */
@@ -342,6 +347,7 @@ internal class CornerRadialOverlayView(
             ModulePreferences.coerceHoverDismissTimeoutMs(hoverDismissTimeoutMs)
         // @author bomo 每次呼出重置悬停状态（不跨呼出残留转动角度/速度/提示）。
         hoverMode = false
+        hoverSettled = false
         innerAngleOffset = 0f
         innerSpinVelocity = 0f
         innerSpinAnimating = false
@@ -403,8 +409,14 @@ internal class CornerRadialOverlayView(
     }
 
     fun finishGesture() {
-        // @author bomo 悬停模式松手语义不同：拖动 → 惯性吸附；点击 → 启动；否则保持悬停。
         if (hoverMode) {
+            // @author bomo 第一次松手（呼出→悬停）：只进入稳定悬停态，不判定打开/消失；
+            // 稳定悬停后的触摸松手才走 tap 判定（拖动→吸附、点应用→打开、点空白→关闭）。
+            if (!hoverSettled) {
+                hoverSettled = true
+                finishFirstHoverRelease()
+                return
+            }
             finishInnerSpinGesture()
             return
         }
@@ -2194,7 +2206,7 @@ internal class CornerRadialOverlayView(
         return Math.toDegrees(d.toDouble()).toFloat()
     }
 
-    /** @author bomo 悬停模式松手：拖动 → 惯性+吸附；点击 → 启动高亮应用；否则保持悬停。 */
+    /** @author bomo 稳定悬停后的触摸松手：拖动 → 惯性+吸附；tap 应用 → 启动；tap 更多 → 面板；tap 空白 → 关闭。 */
     private fun finishInnerSpinGesture() {
         if (innerSpinDragging) {
             resetInnerSpinDragTracking()
@@ -2206,14 +2218,35 @@ internal class CornerRadialOverlayView(
             }
             return
         }
-        val target = selectedIndex?.let(::itemTarget)
+        val selection = selectedIndex
+        val target = selection?.let(::itemTarget)
         resetInnerSpinDragTracking()
-        if (target != null && target in catalog.radialApps.indices) {
-            dismissAnimated(catalog.radialApps[target])
-            return
+        when {
+            target != null && target in catalog.radialApps.indices ->
+                dismissAnimated(catalog.radialApps[target])
+            selection != null && target == null -> showMorePanel()
+            else -> dismissAnimated()
         }
-        // @author bomo 点击非应用区域（外圈空白/扇形外）→ 直接关闭扇形。
-        dismissAnimated()
+    }
+
+    /**
+     * @author bomo 第一次松手（呼出→悬停）：只进入稳定悬停态，不判定打开/消失。
+     * 拖动过则继续惯性吸附；否则直接静止悬停。之后由悬停消失超时或二次触摸接管。
+     */
+    private fun finishFirstHoverRelease() {
+        // @author bomo 第一次松手后手指离开，清掉可能残留的高亮，扇形干净悬停。
+        selectedIndex = null
+        selectedIndexState.intValue = NO_SELECTION
+        if (innerSpinDragging) {
+            resetInnerSpinDragTracking()
+            startInnerSpinInertia()
+        } else {
+            resetInnerSpinDragTracking()
+        }
+        removeCallbacks(hoverDismissTimeout)
+        if (hoverDismissTimeoutMs > 0) {
+            postDelayed(hoverDismissTimeout, hoverDismissTimeoutMs.toLong())
+        }
     }
 
     private fun resetInnerSpinDragTracking() {
@@ -2442,42 +2475,17 @@ internal class CornerRadialOverlayView(
         val metrics = metricsState.value ?: return
         val layout = layoutState.value
         if (layout.itemCenters.isEmpty()) return
-        val outerCount = outerApps().size
+        // @author bomo 悬停态也走全圈选择：外圈静止应用 + 内圈滚轮窗口都可点选打开。
+        // selectedIndex 存布局下标，itemTarget 负责把内圈窗口下标映射回完整应用下标。
         val next =
-            if (hoverMode) {
-                // @author bomo 悬停模式：外圈静止，仅在内圈窗口内选择（映射回完整下标）。
-                val innerStart = outerCount + 1
-                val innerCount = layout.itemCenters.size - innerStart
-                if (innerCount <= 0) {
-                    null
-                } else {
-                    val innerLayout =
-                        RadialLayout(
-                            side = layout.side,
-                            origin = layout.origin,
-                            radius = metrics.radial.innerRadius,
-                            itemCenters = layout.itemCenters.drop(innerStart),
-                        )
-                    RadialGeometry
-                        .selection(
-                            layout = innerLayout,
-                            x = latestX,
-                            y = latestY,
-                            previous = selectedIndex?.minus(innerStart)?.takeIf { it >= 0 },
-                            enterRadius = metrics.radial.selectionEnterRadius,
-                            keepRadius = metrics.radial.selectionKeepRadius,
-                        )?.plus(innerStart)
-                }
-            } else {
-                RadialGeometry.selection(
-                    layout = layout,
-                    x = latestX,
-                    y = latestY,
-                    previous = selectedIndex,
-                    enterRadius = metrics.radial.selectionEnterRadius,
-                    keepRadius = metrics.radial.selectionKeepRadius,
-                )
-            }
+            RadialGeometry.selection(
+                layout = layout,
+                x = latestX,
+                y = latestY,
+                previous = selectedIndex,
+                enterRadius = metrics.radial.selectionEnterRadius,
+                keepRadius = metrics.radial.selectionKeepRadius,
+            )
         if (next == selectedIndex) return
         selectedIndex = next
         selectedIndexState.intValue = next ?: NO_SELECTION

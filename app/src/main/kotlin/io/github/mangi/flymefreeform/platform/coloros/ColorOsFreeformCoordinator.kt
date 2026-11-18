@@ -122,6 +122,8 @@ internal class ColorOsFreeformCoordinator(
     private var pointerGeneration = 0L
     private var overlay: CornerRadialOverlayView? = null
     private var morePanelActive = false
+    /** @author bomo 悬停态下是否正进行一段完整触摸手势（DOWN→…→UP 尚未结束）。 */
+    private var hoverTouchActive = false
     private var lastSettings = ModuleSettingsSnapshot(enabled = false)
     private var activeEnvironmentApproved = false
     private var activeGestureConfig: CornerGestureConfig? = null
@@ -313,16 +315,31 @@ internal class ColorOsFreeformCoordinator(
                 activeGestureConfig = null
                 return
             }
-            // @author bomo 悬停态下的二次触摸：扇形仍显示但手势引擎已 reset，新的 DOWN 若走
-            // 手势引擎会因不在角落热区被 PassThrough。这里直接交给 overlay 判定：
-            // 命中内圈应用则启动，否则关闭扇形（点击空白关闭）。
-            val hoverOverlay = overlay
-            if (hoverOverlay?.isHoverModeActive == true) {
-                hoverOverlay.updateGesture(event.x, event.y)
-                hoverOverlay.finishGesture()
-                return
-            }
         } else if (!activeEnvironmentApproved) {
+            return
+        }
+        // @author bomo 悬停态下的完整触摸手势：扇形已稳定悬停、手势引擎已 reset，DOWN/MOVE/UP
+        // 都直接交给 overlay——滑动内圈转动（可多次）、tap 内外圈应用打开、tap 空白关闭。
+        val hoverOverlay = overlay
+        if (hoverTouchActive || (event.actionMasked == MotionEvent.ACTION_DOWN && hoverOverlay?.isHoverModeActive == true)) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    hoverTouchActive = true
+                    hoverOverlay?.updateGesture(event.x, event.y)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val index = event.findPointerIndex(event.getPointerId(0)).coerceAtLeast(0)
+                    hoverOverlay?.updateGesture(event.getX(index), event.getY(index))
+                }
+                MotionEvent.ACTION_UP -> {
+                    hoverTouchActive = false
+                    hoverOverlay?.finishGesture()
+                }
+                MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> {
+                    hoverTouchActive = false
+                    hoverOverlay?.cancelGesture()
+                }
+            }
             return
         }
         if (overlay != null && !isDynamicEnvironmentAllowed()) {
@@ -716,6 +733,7 @@ internal class ColorOsFreeformCoordinator(
 
     private fun cancelActiveGesture() {
         activeGestureConfig = null
+        hoverTouchActive = false
         gestureEngine.cancel()
         overlay?.cancelGesture()
     }
@@ -723,6 +741,7 @@ internal class ColorOsFreeformCoordinator(
     private fun removeOverlay() {
         val view = overlay ?: return
         overlay = null
+        hoverTouchActive = false
         if (sidebar.isPending) sidebar.cancel()
         morePanelActive = false
         val cleanupFailure = view.disposeOverlay()
